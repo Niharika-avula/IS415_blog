@@ -1,7 +1,7 @@
 ---
 title: "Hands-on Exercise 2"
 description: |
- In this hands-on exercise, you will learn how to handle geospatial data in R by using sf package.
+ In this hands-on exercise, I will learn how to handle geospatial data in R by using sf package.
 author:
   - name: Niharika Avula 
     url: https://example.com/norajones
