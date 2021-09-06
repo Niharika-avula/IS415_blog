@@ -13,11 +13,19 @@ navbar:
     - text: "In-Class Exercise"
       menu:
       - text: "In-Class Exercise 2"
+        href: https://niharika-is415.netlify.app/posts/2021-08-23-in-class-exercise-2/
+      - text: "In-Class Exercise 3"
+        href: https://niharika-is415.netlify.app/posts/2021-08-23-in-class-exercise-3/
+      - text: "In-Class Exercise 4"
         href: index.html
     - text: "Hands-on Exercise"
       menu:
       - text: "Hands-on Exercise 2"
-        href: index.html
+        href: https://niharika-is415.netlify.app/posts/2021-08-29-hands-on-exercise-2/
+      - text: "Hands-on Exercise 3"
+        href: https://niharika-is415.netlify.app/posts/2021-08-31-hands-on-exercise-3/
+      - text: "Hands-on Exercise 4"
+        href: hands-on-exercise-four.html
       href: index.html
     - text: "About"
       href: about.html

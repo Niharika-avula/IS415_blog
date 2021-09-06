@@ -1,0 +1,104 @@
+---
+title: "In-Class Exercise 4"
+description: |
+  A new article created using the Distill format.
+author:
+  - name: Niharika Avula 
+    url: https://example.com/norajones
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# R Packages
+
+The following five R Packages are used
+* sf is mainly used for importing geospatial data
+* Maptools is used to convert spatial object to ppp format (vector data conversion method)
+* All output of spatstat is going to be raster grid
+* sf is specially design for sf layr, raster is specially designed for raster layer
+
+```{r}
+packages = c('maptools', 'sf', 'raster','spatstat', 'tmap', 'readr')
+for (p in packages){
+if(!require(p, character.only = T)){
+install.packages(p)
+}
+library(p,character.only = T)
+}
+```
+
+## Importing Geospatial Data
+
+```{r echo = TRUE, eval = TRUE}
+sg_sf <- st_read(dsn = "data/shapefile", layer = "CostalOutline")
+mpsz_sf <- st_read(dsn = "data/shapefile", layer = "MP14_SUBZONE_WEB_PL")
+```
+## Importing Aspatial Data
+
+```{r echo = TRUE, eval = TRUE}
+childcare <- read_rds("data/rds/childcare.rds")
+CHAS <- read_rds("data/rds/CHAS.rds")
+```
+
+## Converting from apatial to geospatial
+```{r echo = TRUE, eval = TRUE}
+CHAS_sf <- st_as_sf(CHAS, 
+                    coords = c("X_COORDINATE", 
+                               "Y_COORDINATE"), 
+                    crs = 3414)
+```
+
+```{r echo = TRUE, eval = TRUE}
+childcare$Lat <- as.numeric(childcare$Lat)
+childcare$Lng <- as.numeric(childcare$Lng)
+childcare_sf <- st_as_sf(childcare, 
+                    coords = c("Lng", 
+                               "Lat"), 
+                       crs = 4326) %>%
+  st_transform(crs = 3414)
+```
+
+## Geospatial Data Wrangling
+
+### Converting from sf to Spatial* Classes
+
+```{r echo = TRUE, eval = TRUE}
+childcare <- as_Spatial(childcare_sf)
+CHAS <- as_Spatial(CHAS_sf)
+sg <- as_Spatial(sg_sf)
+```
+
+### Converting from Spatial* Classes to sp format
+
+```{r echo = TRUE, eval = TRUE}
+childcare_sp <- as(childcare, "SpatialPoints")
+CHAS_sp <- as(CHAS, "SpatialPoints")
+SG_sp <- as(sg, "SpatialPolygons")
+```
+
+### Converting from sp format to ppp format
+```{r echo = TRUE, eval = TRUE}
+childcare_ppp <- as(childcare_sp, "ppp")
+CHAS_ppp <- as(CHAS_sp, "ppp")
+```
+
+```{r echo = TRUE, eval = TRUE}
+tmap_mode ('view')
+tm_shape(childcare_sf)+
+  tm_dots(alpha = 0.4,
+          col = "blue",
+          size = 0.05) +
+  tm_shape(CHAS_sf) +
+  tm_dots(alpha = 0.4,
+          col = "red",
+          size = 0.05)
+
+```
+
+```{r echo = TRUE, eval = TRUE}
+tmap_mode('plot')
+```
