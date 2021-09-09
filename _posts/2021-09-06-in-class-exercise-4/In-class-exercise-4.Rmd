@@ -1,7 +1,8 @@
 ---
 title: "In-Class Exercise 4"
 description: |
-  A new article created using the Distill format.
+  In this in-class exercise, I will learn how to apply spatial point analysis techniques
+  
 author:
   - name: Niharika Avula 
     url: https://example.com/norajones
