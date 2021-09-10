@@ -1,0 +1,891 @@
+---
+title: "Take Home Exercise 1"
+description: |
+  Analysing and Visualising Spatio-temporal Patterns of COVID-19 in DKI Jakarta, Indonesia
+author:
+  - name: Niharika Avula 
+    url: https://example.com/norajones
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# 1. Overview
+
+COVID-19, which was first reported in Wuhan, China, back in December 2019, has soon brought our world to a standstill. Starting as a global health crisis, it has soon evolved to impact our economy, the livelihood of millions of people, and unfortunately widening the existing inequalities (poverty, resources, technology, education etc...) in our world. 
+
+The most significant factor in the evolution of COVID-19 pandemic is definitely government's response worldwide. Each government had a different set of local issues and dynamics that they had to navigate as they tackled this global issue. Therefore, Indonesia is one such unique case in Southeast Asia and my objective of this exercise is to study the rate of COVID-19 spread and the resulting deaths in the Capital city Jakarta (world's second most populous urban area). Studying the spread of COVID-19 in Jakarta alone will not be sufficient, therefore I will also attempt to look at the government's response in-parallel to study its impact on the COVID-19 evolution in Jakarta.
+
+The virus was confirmed to have reached Indonesia on March 2, 2020 with two cases. As of July 31 2021, there had been 94,119 reported cumulative deaths from COVID-19 and 3,409,658 cumulative confirmed cases with Jakarta contributing close to 24% of this count.
+
+## 1.1 Problem Statement
+
+1. **Spatial-Temporal Analysis:** Study the spread of confirmed COVID-19 cases and the resulting death rate in DKI Jakarta.
+* *Spatial considerations (i.e Geopgraphy):* At sub-district level in Jakarta
+* *Temporal consideration (i.e Time):* Monthly interval (last day of the month) 
+
+2. **Additional**: Make insightful connection to the government response in parallel to further study the underlying reasons for the spread of COVID-19
+
+## 1.2 Learning Objectives
+
+* Over all, revise and apply the Geospatial Analytics concepts using the various R packages learned in lessons 1 - 4
+  + Perform the entire Geospatial data wrangling processes (import, extract, clean and transform)
+  + Apply the thematic and analytics mapping techniques to analyse the Geospatial data prepared
+  + Apply various Geovisualisation techniques to present and communicate the analysis findings
+  + Provide a comprehensive documentation of the entire analysis procedure with good explanation on the techniques and findings
+
+
+## 1.3 The Data
+
+The following data sets will be used in the analysis.
+
+Data   | Format | Description        | Source    
+-------|--------|--------------------|------------------
+Cumulative COVID-19 & death cases |  XLSX   | COVID-19 data of DKI Jakarta from Mar 2020 to Aug 2021 | [Link](https://riwayat-file-covid-19-dki-jakarta-jakartagis.hub.arcgis.com/)
+Jakarta | Shapefile | |[Link](https://www.indonesia-geospasial.com/2020/04/download-shapefile-shp-batas-desa.html)
+
+## 2. Setting up the Environment
+
+The following packages are installed and loaded, details on each of the package is given below:
+
+* **Sf:** This R package will be used in this exercise to import, manage and process vector-based geospatial data in R.
+* **Tmap:** This R package will be used in this exercise to create thematic maps such as choropleths
+* **Tidyverse:** It is a collection of eight essential R packages that help in the handling of data (importing, wrangling and visualising). In this exercise, the following three R packages will be used.
+  + **readxl** for importing delimited text file
+  + **tidyr** for tidying data
+  + **dplyr** for wrangling data 
+
+```{r echo = TRUE, eval = TRUE, highlight=TRUE, background= '#990000'}
+
+packages = c('sf', 'tmap', 'tidyverse', 'readxl', 'dplyr', 'tidyr')
+for (p in packages){
+if(!require(p, character.only = T)){
+install.packages(p)
+}
+library(p,character.only = T)
+}
+```
+
+# 3. Data Importing and Wrangling
+
+This section will detail how the (R) functions from (R) package are used to import the Geospatial and Aspatial data. In addition, the various steps taken in the data wrangling or preparation process will also be presented and explained
+
+## 3.1 Data Importing
+
+### 3.1.1 Aspatial Data Importing
+
+**Step 1:** Loading the Mar 2020 COVID-19 data using the code chunk below, this process will be repeated for the remaining months in the later part
+
+```{r echo = TRUE, eval = TRUE}
+Mar_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Maret 2020 Pukul 08.00).xlsx")
+```
+**Step 2:** Extracting the following columns from the Mar 2020 COVID-19 data using the code chunk below
+
+* *Columns extracted:* Extract ID_KEL, Nama_provinsi, nama_kota, nama_kecamatan nama_kelurahan, POSITIF (cumulative confirmed cases) and meninggal (cumulative death cases). *Please note that data is further filtered to exclude "BELUM DIKETAHUI" (Not known), "LUAR DKI JAKARTA" (outside Jakarta) and "KAB.ADM.KEP.SERIBU" (Islands outside mainland Jakarta) under the name_kota column*
+   + **cumulated_data_cases** data frame consists of the location details with the cumulative confirmed cases in the specific month
+   + **cumulated_data_deaths** data frame consists of the location details with the cumulative death cases in the specific month
+* *Column Names:* Column names of POSITIF (cumulative confirmed cases) and meninggal (cumulative death cases) are changed to be more meaningful with the month name
+
+```{r echo = TRUE, eval = TRUE}
+  Cumulated_data_cases <- Mar_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                     select(`ID_KEL...1`, `Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+                    
+  # Renaming Column names from POSITIF to March 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("ID_KEL...1", "POSITIF")] <- c("ID_KEL", "March 2020")
+ 
+  
+  Cumulated_data_deaths <- Mar_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`ID_KEL...1`, `Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal`)
+  # Renaming Column names from POSITIF to March 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) # Rename two variable names
+                   %in% c("ID_KEL...1", "Meninggal")] <- c("ID_KEL", "March 2020")                   
+```
+
+The code chunk below gives a glimpse of the data in the **cumulated_data_cases* dataframe
+
+```{r echo = TRUE, eval = TRUE}
+  head(Cumulated_data_cases)
+```
+
+```{r echo = TRUE, eval = TRUE}
+  glimpse(Cumulated_data_cases)
+```
+*Comment: There are initially 270 line items in the dataset, 9 line items got filtered out, resulting in 261 line items*
+
+
+```{r echo = TRUE, eval = TRUE}
+  head(Cumulated_data_deaths)
+```
+
+```{r echo = TRUE, eval = TRUE}
+  glimpse(Cumulated_data_deaths)
+```
+*Comment: This is consistent with the Cumulated_data_cases data frame with 9 line items filtered out and resulting in 261 line items*
+
+**Step 3:** Importing data for the remaining period of Apr 2020 to Aug 2021 COVID-19 data using the code chunk below
+
+```{r echo = TRUE, eval = TRUE}
+Apr_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (30 April 2020 Pukul 09.00).xlsx")
+May_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 MEI 2020 Pukul 09.00).xlsx")
+Jun_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (30 Juni 2020 Pukul 09.00).xlsx")
+Jul_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Juli 2020 Pukul 09.00).xlsx")
+Aug_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Agustus 2020 Pukul 10.00).xlsx")
+Sep_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (30 September 2020 Pukul 10.00).xlsx")
+Oct_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Oktober 2020 Pukul 10.00).xlsx")
+Nov_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (30 November 2020 Pukul 10.00).xlsx")
+Dec_2020_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Desember 2020 Pukul 10.00).xlsx")
+Jan_2021_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (30 Januari 2021 Pukul 10.00).xlsx")
+Feb_2021_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (28 Februari 2021 Pukul 10.00).xlsx")
+Mar_2021_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Maret 2021 Pukul 10.00).xlsx")
+Apr_2021_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (30 April 2021 Pukul 10.00).xlsx")
+May_2021_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Mei 2021 Pukul 10.00).xlsx")
+Jun_2021_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (30 Juni 2021 Pukul 10.00).xlsx")
+Jul_2021_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Juli 2021 Pukul 10.00).xlsx")
+Aug_2021_data <- read_excel("Data/Aspatial/Standar Kelurahan Data Corona (31 Agustus 2021 Pukul 10.00).xlsx")
+```
+
+**Step 4:** Importing data for the remaining period of Apr 2020 to Aug 2021 COVID-19 data using the code chunk below
+
+*April 2020*
+
+```{r echo = TRUE, eval = TRUE}
+  Apr_2020_extracted_data_cases <- Apr_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Apr_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to April 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("April 2020")
+  
+   Apr_2020_extracted_data_death <- Apr_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Apr_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to April 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal")] <- c("April 2020")
+```
+
+*May 2020*
+
+```{r echo = TRUE, eval = TRUE}
+  May_2020_extracted_data_cases <- May_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, May_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to May 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("May 2020")
+  
+   May_2020_extracted_data_death <- May_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, May_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to May 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal")] <- c("May 2020")
+```
+
+*June 2020*
+
+```{r echo = TRUE, eval = TRUE}
+  Jun_2020_extracted_data_cases <- Jun_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Jun_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to June 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("June 2020")
+  
+   Jun_2020_extracted_data_death <- Jun_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Jun_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to June 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal")] <- c("June 2020")
+```
+
+*July 2020*
+
+```{r echo = TRUE, eval = TRUE}
+  Jul_2020_extracted_data_cases <- Jul_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Jul_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to July 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("July 2020")
+  
+   Jul_2020_extracted_data_death <- Jul_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...26`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Jul_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to July 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...26")] <- c("July 2020")
+```
+
+*Aug 2020*
+
+```{r echo = TRUE, eval = TRUE}
+  Aug_2020_extracted_data_cases <- Aug_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Aug_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to August 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("August 2020")
+  
+   Aug_2020_extracted_data_death <- Aug_2020_data %>%
+                    filter(nama_kota != "BELUM DIKETAHUI") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...28`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Aug_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to August 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...28")] <- c("August 2020")
+```
+
+*Sep 2020*
+
+*Note: Based on September data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Sep_2020_extracted_data_cases <- Sep_2020_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Sep_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to September 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("September 2020")
+  
+   Sep_2020_extracted_data_death <- Sep_2020_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...29`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Sep_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to September 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...29")] <- c("September 2020")
+```
+
+*Oct 2020*
+
+*Note: Based on October data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Oct_2020_extracted_data_cases <- Oct_2020_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Oct_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to October 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("October 2020")
+  
+   Oct_2020_extracted_data_death <- Oct_2020_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...30`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Oct_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to October 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...30")] <- c("October 2020")
+```
+
+*Nov 2020*
+
+*Note: Based on November data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Nov_2020_extracted_data_cases <- Nov_2020_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Nov_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to November 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("November 2020")
+  
+   Nov_2020_extracted_data_death <- Nov_2020_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...30`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Nov_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to November 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...30")] <- c("November 2020")
+```
+
+*Dec 2020*
+
+*Note: Based on December data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Dec_2020_extracted_data_cases <- Dec_2020_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Dec_2020_extracted_data_cases)
+  # Renaming Column names from POSITIF to December 2020
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("December 2020")
+  
+   Dec_2020_extracted_data_death <- Dec_2020_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...30`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Dec_2020_extracted_data_death)
+  # Renaming Column names from POSITIF to December 2020
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...30")] <- c("December 2020")
+```
+
+
+*Jan 2021*
+
+*Note: Based on January data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Jan_2021_extracted_data_cases <- Jan_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Jan_2021_extracted_data_cases)
+  # Renaming Column names from POSITIF to January 2021
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("January 2021")
+  
+   Jan_2021_extracted_data_death <- Jan_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...31`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Jan_2021_extracted_data_death)
+  # Renaming Column names from POSITIF to January 2021
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...31")] <- c("January 2021")
+```
+
+*Feb 2021*
+
+*Note: Based on February data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Feb_2021_extracted_data_cases <- Feb_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Feb_2021_extracted_data_cases)
+  # Renaming Column names from POSITIF to February 2021
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("February 2021")
+  
+   Feb_2021_extracted_data_death <- Feb_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...31`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Feb_2021_extracted_data_death)
+  # Renaming Column names from POSITIF to February 2021
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...31")] <- c("February 2021")
+```
+
+*Mar 2021*
+
+*Note: Based on March data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Mar_2021_extracted_data_cases <- Mar_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Mar_2021_extracted_data_cases)
+  # Renaming Column names from POSITIF to March 2021
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("March 2021")
+  
+   Mar_2021_extracted_data_death <- Mar_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...31`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Mar_2021_extracted_data_death)
+  # Renaming Column names from POSITIF to March 2021
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...31")] <- c("March 2021")
+```
+
+*Apr 2021*
+
+*Note: Based on April data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Apr_2021_extracted_data_cases <- Apr_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Apr_2021_extracted_data_cases)
+  # Renaming Column names from POSITIF to April 2021
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("April 2021")
+  
+   Apr_2021_extracted_data_death <- Apr_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...31`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Apr_2021_extracted_data_death)
+  # Renaming Column names from POSITIF to April 2021
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...31")] <- c("April 2021")
+```
+
+
+*May 2021*
+
+*Note: Based on May data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  May_2021_extracted_data_cases <- May_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, May_2021_extracted_data_cases)
+  # Renaming Column names from POSITIF to May 2021
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("May 2021")
+  
+   May_2021_extracted_data_death <- May_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...31`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, May_2021_extracted_data_death)
+  # Renaming Column names from POSITIF to May 2021
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...31")] <- c("May 2021")
+```
+
+*June 2021*
+
+*Note: Based on June data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Jun_2021_extracted_data_cases <- Jun_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Jun_2021_extracted_data_cases)
+  # Renaming Column names from POSITIF to June 2021
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("June 2021")
+  
+   Jun_2021_extracted_data_death <- Jun_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...31`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Jun_2021_extracted_data_death)
+  # Renaming Column names from POSITIF to June 2021
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...31")] <- c("June 2021")
+```
+
+*July 2021*
+
+*Note: Based on July data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Jul_2021_extracted_data_cases <- Jul_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Jul_2021_extracted_data_cases)
+  # Renaming Column names from POSITIF to July 2021
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("July 2021")
+  
+   Jul_2021_extracted_data_death <- Jul_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...31`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Jul_2021_extracted_data_death)
+  # Renaming Column names from POSITIF to July 2021
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...31")] <- c("July 2021")
+```
+
+*Aug 2021*
+
+*Note: Based on August data, the following data under "PROSES UPDATE DATA" (Process updated) is also excluded under the name_kota column*
+
+```{r echo = TRUE, eval = TRUE}
+  Aug_2021_extracted_data_cases <- Aug_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `POSITIF`)
+  Cumulated_data_cases <- merge(Cumulated_data_cases, Aug_2021_extracted_data_cases)
+  # Renaming Column names from POSITIF to August 2021
+  colnames(Cumulated_data_cases)[colnames(Cumulated_data_cases) 
+                   %in% c("POSITIF")] <- c("August 2021")
+  
+   Aug_2021_extracted_data_death <- Aug_2021_data %>%
+                    filter(nama_kota != "PROSES UPDATE DATA") %>%
+                    filter(nama_kota != "LUAR DKI JAKARTA") %>%
+                    filter(nama_kota != "KAB.ADM.KEP.SERIBU") %>%
+                    select(`Nama_provinsi`, `nama_kota`, 
+                    `nama_kecamatan`, `nama_kelurahan`, 
+                    `Meninggal...31`)
+  Cumulated_data_deaths <- merge(Cumulated_data_deaths, Aug_2021_extracted_data_death)
+  # Renaming Column names from POSITIF to August 2021
+  colnames(Cumulated_data_deaths)[colnames(Cumulated_data_deaths) 
+                   %in% c("Meninggal...31")] <- c("August 2021")
+```
+
+```{r echo = TRUE, eval = TRUE}
+  glimpse(Cumulated_data_cases)
+```
+*Comment: The number of rows have remained consistent at 261, so no additional loss of data in this analysis*
+
+```{r echo = TRUE, eval = TRUE}
+  head(Cumulated_data_deaths)
+```
+
+```{r echo = TRUE, eval = TRUE}
+  glimpse(Cumulated_data_deaths)
+```
+
+*Comment: The number of rows have remained consistent at 261, so no additional loss of data in this analysis*
+
+### 3.1.2 Geospatial Data Importing
+
+**Step 1:** The code chunk below is using the st_read() function of sf package to import the DKI Jakarta shapefile 
+
+```{r echo = TRUE, eval = TRUE}
+jakarta_sf <- st_read(dsn = "Data/Geospatial",
+                layer = "BATAS_DESA_DESEMBER_2019_DUKCAPIL_DKI_JAKARTA")
+```
+
+**Step 2:** The code chunk below accomplishes the following two steps:
+* Filters out data that are N/A as well as the outer islands
+* Selects only first 9 fields in the  DKI Jakarta data Frame
+
+```{r echo = TRUE, eval = TRUE}
+jakarta_sf_extracted <- jakarta_sf %>%
+                    filter(KAB_KOTA != "KEPULAUAN SERIBU") %>%
+                    filter(KAB_KOTA != "NA") %>%
+                    select(`OBJECT_ID`, `KODE_DESA`, 
+                    `DESA`, `KODE`, `PROVINSI`, `KAB_KOTA`, `KECAMATAN`, `DESA_KELUR`, `JUMLAH_PEN`)
+```
+
+```{r echo = TRUE, eval = TRUE}
+  glimpse(jakarta_sf_extracted)
+```
+*Comment: The number of resulting rows is 261, same as the aspatial data*
+
+**Step 3:** Final step is to check the projected coordinate system and to transform it accordingly
+
+```{r echo = TRUE, eval = TRUE}
+st_geometry(jakarta_sf_extracted)
+```
+*Comment: It can be seen that projection is currently WGS 84 and this needs to be transformed to the national Projected Coordinates Systems of Indonesia (DGN95, ESPG Code: 23845) *
+
+```{r echo = TRUE, eval = TRUE}
+jakarta_sf_extracted_DGN95 <- st_transform(jakarta_sf_extracted, crs = 23845)
+```
+
+```{r echo = TRUE, eval = TRUE}
+st_geometry(jakarta_sf_extracted_DGN95)
+```
+*Comment: It can be seen that projection is currently transformed to the national Projected Coordinates Systems of Indonesia (DGN95, ESPG Code: 23845) *
+
+## 3.2 Geospatial Data Integration
+
+This section details the final stage in the data wrangling process, showing the detailed steps for:
+1. Combining the geospatial *(jakarta_sf_extracted)* and aspatial *(Cumulated_data_deaths & Cumulated_data_cases)* data frames into a simple feature data frame
+2. Calculating the cumulative confirmed cases rate (i.e. cases per 10000 population) and the cumulative death rate by month
+
+### 3.2.1 Data Integration
+
+```{r echo = TRUE, eval = TRUE}
+jakarta_cumulated_cases <- left_join(jakarta_sf_extracted_DGN95, Cumulated_data_cases,
+                          by = c("KODE_DESA" = "ID_KEL"))
+```
+
+```{r echo = TRUE, eval = TRUE}
+jakarta_cumulated_deaths <- left_join(jakarta_sf_extracted_DGN95, Cumulated_data_deaths,
+                          by = c("KODE_DESA" = "ID_KEL"))
+```
+
+### 3.2.2 Calculating Cumulative Confirmed cases rate and death rate
+
+The code chunks below calculate the cumulative rates for confirmed cases and death cases
+
+```{r echo = TRUE, eval = TRUE}
+jakarta_cumulated_cases_rate <- jakarta_cumulated_cases %>%
+mutate(`March 2020` = (`March 2020`/`JUMLAH_PEN`*10000)) %>% 
+mutate(`April 2020` = (`April 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`May 2020` = (`May 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`June 2020` = (`June 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`July 2020` = (`July 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`August 2020` = (`August 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`September 2020` = (`September 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`October 2020` = (`October 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`November 2020` = (`November 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`December 2020` = (`December 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`January 2021` = (`January 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`February 2021` = (`February 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`March 2021` = (`March 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`April 2021` = (`April 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`May 2021` = (`May 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`June 2021` = (`June 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`July 2021` = (`July 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`August 2021` = (`August 2021`/`JUMLAH_PEN`*10000))
+```
+
+
+```{r echo = TRUE, eval = TRUE}
+jakarta_cumulated_deaths_rate <- jakarta_cumulated_deaths %>%
+mutate(`March 2020` = (`March 2020`/`JUMLAH_PEN`*10000)) %>% 
+mutate(`April 2020` = (`April 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`May 2020` = (`May 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`June 2020` = (`June 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`July 2020` = (`July 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`August 2020` = (`August 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`September 2020` = (`September 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`October 2020` = (`October 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`November 2020` = (`November 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`December 2020` = (`December 2020`/`JUMLAH_PEN`*10000)) %>%
+mutate(`January 2021` = (`January 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`February 2021` = (`February 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`March 2021` = (`March 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`April 2021` = (`April 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`May 2021` = (`May 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`June 2021` = (`June 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`July 2021` = (`July 2021`/`JUMLAH_PEN`*10000)) %>%
+mutate(`August 2021` = (`August 2021`/`JUMLAH_PEN`*10000))
+```
+
+# 4. Thematic Mapping
+
+The code chunk below is mapping the cumulative cases rate from March 2020 to August 2021
+
+```{r echo = TRUE, eval = TRUE}
+March_2020 <- qtm(jakarta_cumulated_cases_rate, fill="March 2020")
+April_2020 <- qtm(jakarta_cumulated_cases_rate, fill="April 2020")
+May_2020 <- qtm(jakarta_cumulated_cases_rate, fill="May 2020")
+June_2020 <- qtm(jakarta_cumulated_cases_rate, fill="June 2020")
+July_2020 <- qtm(jakarta_cumulated_cases_rate, fill="July 2020")
+August_2020 <- qtm(jakarta_cumulated_cases_rate, fill="August 2020")
+September_2020 <- qtm(jakarta_cumulated_cases_rate, fill="September 2020")
+October_2020 <- qtm(jakarta_cumulated_cases_rate, fill="October 2020")
+November_2020 <- qtm(jakarta_cumulated_cases_rate, fill="November 2020")
+December_2020 <- qtm(jakarta_cumulated_cases_rate, fill="December 2020")
+January_2021 <- qtm(jakarta_cumulated_cases_rate, fill="January 2021")
+February_2021 <- qtm(jakarta_cumulated_cases_rate, fill="February 2021")
+March_2021 <- qtm(jakarta_cumulated_cases_rate, fill="March 2021")
+April_2021 <- qtm(jakarta_cumulated_cases_rate, fill="April 2021")
+May_2021 <- qtm(jakarta_cumulated_cases_rate, fill="May 2021")
+June_2021 <- qtm(jakarta_cumulated_cases_rate, fill="June 2021")
+July_2021 <- qtm(jakarta_cumulated_cases_rate, fill="July 2021")
+August_2021 <- qtm(jakarta_cumulated_cases_rate, fill="August 2021")
+tmap_arrange(March_2020, April_2020, ncol = 2)
+tmap_arrange(May_2020, June_2020, ncol = 2)
+tmap_arrange(July_2020, August_2020, ncol= 2)
+tmap_arrange(September_2020, October_2020, ncol= 2)
+tmap_arrange(November_2020, December_2020, ncol= 2)
+tmap_arrange(January_2021, February_2021, ncol= 2)
+tmap_arrange(March_2021, April_2021, ncol= 2)
+tmap_arrange(May_2021, June_2021, ncol= 2)
+tmap_arrange(July_2021, August_2021, ncol= 2)
+```
+
+
+The code chunk below is mapping the cumulative death rate from March 2020 to August 2021
+
+```{r echo = TRUE, eval = TRUE}
+March_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="March 2020")
+April_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="April 2020")
+May_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="May 2020")
+June_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="June 2020")
+July_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="July 2020")
+August_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="August 2020")
+September_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="September 2020")
+October_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="October 2020")
+November_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="November 2020")
+December_2020 <- qtm(jakarta_cumulated_deaths_rate, fill="December 2020")
+January_2021 <- qtm(jakarta_cumulated_deaths_rate, fill="January 2021")
+February_2021 <- qtm(jakarta_cumulated_deaths_rate, fill="February 2021")
+March_2021 <- qtm(jakarta_cumulated_deaths_rate, fill="March 2021")
+April_2021 <- qtm(jakarta_cumulated_deaths_rate, fill="April 2021")
+May_2021 <- qtm(jakarta_cumulated_deaths_rate, fill="May 2021")
+June_2021 <- qtm(jakarta_cumulated_deaths_rate, fill="June 2021")
+July_2021 <- qtm(jakarta_cumulated_deaths_rate, fill="July 2021")
+August_2021 <- qtm(jakarta_cumulated_deaths_rate, fill="August 2021")
+tmap_arrange(March_2020, April_2020, ncol = 2)
+tmap_arrange(May_2020, June_2020, ncol = 2)
+tmap_arrange(July_2020, August_2020, ncol= 2)
+tmap_arrange(September_2020, October_2020, ncol= 2)
+tmap_arrange(November_2020, December_2020, ncol= 2)
+tmap_arrange(January_2021, February_2021, ncol= 2)
+tmap_arrange(March_2021, April_2021, ncol= 2)
+tmap_arrange(May_2021, June_2021, ncol= 2)
+tmap_arrange(July_2021, August_2021, ncol= 2)
+```
+
+# 5. Analytical Mapping
+In this section, rate chloropleth maps will be plotted 
+
+```{r echo = TRUE, eval = TRUE}
+get.var <- function(vname,df) {
+  v <- df[vname] %>% 
+    st_set_geometry(NULL)
+  v <- unname(v[,1])
+  return(v)
+}
+```
+
+
+```{r echo = TRUE, eval = TRUE}
+percent <- c(0,.01,.1,.5,.9,.99,1)
+var <- get.var("March 2020",jakarta_cumulated_cases_rate)
+bperc <- quantile(var,percent)
+tm_shape(jakarta_cumulated_cases_rate) +
+  tm_polygons() +
+tm_shape(jakarta_cumulated_cases_rate) +
+  tm_fill("March 2020",
+          title="March 2020",
+          breaks=bperc,
+          palette="Blues",
+          labels=c("< 1%", "1% - 10%",
+                   "10% - 50%", 
+                   "50% - 90%",
+                   "90% - 99%", 
+                   "> 99%"))  +
+  tm_borders() +
+  tm_layout(title = "Percentile Map", 
+            title.position = c("right",
+                               "bottom"))
+
+qtm(jakarta_cumulated_deaths_rate, fill = "March 2020", title = "Chloropleth Map")
+```
