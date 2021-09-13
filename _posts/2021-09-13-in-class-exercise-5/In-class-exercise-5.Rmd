@@ -3,7 +3,7 @@ title: "In-Class Exercis 5"
 description: |
  "In this hands-on exercise, I will learn spatial point analysis techniques"
 author:
-  - name: Nora Jones 
+  - name: Niharika Avula 
     url: https://example.com/norajones
 date: "`r Sys.Date()`"
 output: distill::distill_article
