@@ -1,0 +1,25 @@
+---
+title: "Hands-on Exercis 5"
+description: |
+ "In this hands-on exercise, I will learn to use  using appropriate functions of spNetwork package: To derive network constrained kernel density estimation (NetKDE), and to perform network G-function and k-function analysis"
+author:
+  - name: Niharika Avula 
+    url: https://example.com/norajones
+date: "`r Sys.Date()`"
+output: distill::distill_article
+        toc: TRUE
+        toc_depth: 2
+---
+
+```{r setup, include=FALSE, eval = TRUE, echo = TRUE, message = FALSE, error = FALSE, fig.retina = 3}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,67 @@
+---
+title: "In-Class Exercise 6"
+description: |
+  In this exercise, I will learn how to derive spatial weights by using functions provided by spdep package. I will also learn how to apply these spatial weights to compute spatially lagged values
+author:
+  - name: Niharika Avula
+    url: https://example.com/norajones
+date: "`r Sys.Date()`"
+output: distill::distill_article
+   self_contained: false
+---
+
+```{r setup, include=FALSE,eval = TRUE, echo = TRUE, message = FALSE, error = FALSE, fig.retina = 3}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+In this exercise, I will learn how to compute spatial weights using R:
+
+* Import geospatial data using appropriate function(s) of **sf** package,
+* Import csv file using appropriate function of **readr** package,
+* Perform relational join using appropriate join function of **dplyr** package,
+* Compute spatial weights using appropriate functions of **spdep** package, and
+* Calculate spatially lagged variables using appropriate functions of **spdep** package
+
+# Data
+
+Two data sets will be used in this exercise, they are:
+
+* Hunan county boundary layer. This is a geospatial data set in ESRI shapefile format.
+* Hunan_2012.csv: This csv file contains selected Hunan’s local development indicators in 2012.
+
+# Getting Started
+
+The code chunk below installs the following packages 
+
+```{r}
+packages = c('sf', 'spdep', 'tmap', 'tidyverse')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+# Getting the Data Into R Environment
+
+The geospatial data is in ESRI shapefile format and the attribute table is in csv fomat, so they will be imported into the R environment in this section.
+
+## Import shapefile into R environment
+The code chunk below uses st_read() of sf package to import Hunan shapefile into R. The imported shapefile will be simple features Object of sf.
+
+```{r}
+hunan <- st_read(dsn = "data/shapefile", 
+                 layer = "Hunan")
+
+```
+
+## Import csv file into R environment
+
+The code chunk below uses read_csv() of readr package to import Hunan_2012.csv into R.
+
+```{r}
+hunan2012 <- read_csv("data/aspatial/Hunan_2012.csv")
+```
+
