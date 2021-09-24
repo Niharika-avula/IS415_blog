@@ -29,6 +29,8 @@ navbar:
         href: https://niharika-is415.netlify.app/posts/2021-08-31-hands-on-exercise-3/
       - text: "Hands-on Exercise 4"
         href: https://niharika-is415.netlify.app/posts/2021-09-04-hands-on-exercise-4/
+      - text: "Hands-on Exercise 5.1"
+        href: https://niharika-is415.netlify.app/posts/2021-09-15-hands-on-exercise-5/
       href: index.html
     - text: "About"
       href: about.html
