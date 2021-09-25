@@ -1,0 +1,302 @@
+---
+title: "Hands-on Exercise 5.1"
+description: |
+ "In this hands-on exercise, I will learn using appropriate R functions to analyse marks spatial point events. The case study aims to discover the spatial point processes of childecare centres by operators in Singapore"
+author:
+  - name: Niharika Avula 
+    url: https://example.com/norajones
+date: "`r Sys.Date()`"
+output: 
+  distill::distill_article:
+        toc: TRUE
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE, eval = TRUE, echo = TRUE, message = FALSE, error = FALSE, fig.retina = 3}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Overview
+
+Point pattern dataset contains a complete enumeration of events (i.e., objects of interest) occurring in a defined study region. These events could represent anything with a measurable location including traffic accidents, crime occurrences, social service location, business establishment locations, etc. In addition to locational information, each event could have an associated continuous (e.g., number of students, volume of sales) or categorical measurement (e.g., type of schools, operators of the fast food chains). The measurements are called marks and the events with marks are called a marked point pattern.
+
+Marked point patterns have first-order properties, which are related to the intensity (i.e., density) of events and associated marks across the study region, and second-order properties, which are related to the spatial dependence (i.e., spatial arrangement) of the events and associated marks across the study area.
+
+**The research questions**
+The specific question we would like to answer is:
+
+* Are the locations of childcare centre by different business groups (i.e. NT, PT, RC, ST) spatial independent?
+* If the answer is NO, are there any phenomena of attraction or repulsion?
+
+# 2. Data
+
+To provide answer to the questions above, two data sets will be used. They are:
+
+* Childcare centre: The original data is in KML format. It has been converted into ESRI shapefile format.
+* URA Master Plan Subzone 2014: It is in ESRI shapefile format.
+
+# 3. Installing and Loading the R packages
+
+For the purpose of this study, five R packages will be used. They are:
+
+* rgdal for importing geospatial data in GIS file format such as shapefile into R and save them as Spatial*DataFrame,
+* maptools for converting Spatial* object into ppp object,
+* raster for handling raster data in R,
+* spatstat for performing Spatial Point Patterns Analysis such as kcross, Lcross, etc., and
+* tmap for producing cartographic quality thematic maps
+
+```{r}
+packages = c('rgdal', 'maptools', 'raster','spatstat', 'tmap')
+for (p in packages){
+if(!require(p, character.only = T)){
+install.packages(p)
+}
+library(p,character.only = T)
+}
+
+```
+# 4. Importing the Geospatial Data
+
+* readOGR() of rgdal package is used to import both geospatial data files (i.e. shapefile) into R
+
+```{r}
+childcare <- readOGR(dsn = "data/geospatial", layer="CHILDCARE")
+mpsz = readOGR(dsn = "data/geospatial", layer="MP14_SUBZONE_WEB_PL")
+```
+Since, readOGR() of rgdal package is used, the output R objects will be in SpatialPointsDataframe and SpatialPolygonsDataframe classes respectively.
+
+## 4.1 Using str () to check data type of childcare SpatialPointsDataFrame
+
+This is necessary because the **marked** field must be in **factor** data type if its values are categorical.
+
+```{r}
+str(childcare)
+```
+## 4.2 Converting to Factor data type
+
+The output above shows that *Type* field is in character data type and not in factor data type as required by spatstat package. Hence, the code chunk below will be used to convert Type field to factor data type.
+
+```{r}
+childcare@data$Type <- as.factor(childcare@data$Type)
+```
+
+# 5. Mapping the geospatial layers
+
+Before we jump into the analysis, it is a good practice to visualise the geospatial data.
+
+1. tmap package is used with tmap_mode("view") mode to plot an interactive map by using leaflet api.
+
+```{r}
+tmap_mode("view")
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+  tmap_options(check.and.fix = TRUE) +
+tm_shape(childcare) +
+  tm_dots(col = 'Type', size = 0.02)
+```
+```{r}
+tmap_mode('plot')
+```
+
+2. Alternatively, we can use the code chunk below to create four small point maps by using tm_facets() of tmap pckage.
+
+```{r}
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(childcare) +
+  tm_dots(col = 'Type', 
+          size = 0.5) +
+tm_facets(by="Type")
+
+```
+
+# 6. Spatial Data Wrangling
+
+**Good to know information:**
+
+Table below shows spatstat functions for wrangling geospatial data.
+
+function  |  Description
+==========|==============
+ppp| Create point pattern dataset
+as.ppp| convert other data to point pattern
+superimpose| combine several point patterns
+scanpp| read point pattern data from text file
+clickppp| create a pattern using point-and-click interface
+marks| extract marks
+marks <- | attach marks (assignment operator)
+%mark% | attach marks (binary operator)
+unmark| remove marks
+cut.ppp| classify points into types
+
+## 6.1 Converting the SpatialPointsDataFrame into ppp format
+
+The code chunk below uses as.(x, “ppp”) or as.ppp(x) of maptools package to convert an object x of class SpatialPointsDataFrame to a spatial point pattern in spatstat. In this conversion, the additional field in x data frame will become the marks of the point pattern z.
+
+```{r}
+childcare_ppp <- as(childcare, "ppp")
+plot(childcare_ppp)
+```
+From the above map, we can see:
+* there are four sub-types in the marks list: NT, PT, RC and ST
+* to examine the summary statistics of this spatial object, summary() of Base R will be used
+
+```{r}
+summary(childcare_ppp)
+```
+Summary above shows:
+* PT is the largest childcare operator in Singapore with a market share of 63%. This is followed by ST, RC and NT.
+
+## 6.2 Avoiding duplicated spatial point event by using jittering method
+
+It is also important to note that the spatial point object contains duplicated points. The quality of our analysis will be compromised if we failed to resolve this data issue.
+
+```{r}
+childcare_ppp_jit <- rjitter(childcare_ppp, retry=TRUE, nsim=1, drop=TRUE)
+```
+
+Checking the output to ensure that there is no more duplicated spatial point events in the data.
+
+```{r}
+any(duplicated(childcare_ppp_jit))
+```
+The output shows that the duplicated points issue has been resolved
+
+## 6.3 Creating *owin*
+
+When analysing spatial point patterns, it is a good practice to confine the analysis within a geographical area like Singapore boundary. In **spatstat**, an object called **owin** is specially designed to represent this polygonal region.
+
+### 6.3.1 Extracting Study Area
+
+The code chunk below will be used to extract the Jurong West planning area.
+
+```{r}
+jw = mpsz[mpsz@data$PLN_AREA_N == "JURONG WEST",]
+plot(jw, main = "Jurong West")
+```
+### 6.3.2 Converting the spatial point data frame into generic sp format
+
+Conversion of these SpatialPolygonsDataFrame layers into generic spatialpolygons layers by using as.SpatialPolygons.tess(x) of maptools package
+
+```{r}
+jw_sp = as(jw, "SpatialPolygons")
+str(jw_sp)
+```
+
+### 6.3.3 Creating *owin* object
+```{r}
+jw_owin = as(jw_sp, "owin")
+str(jw_owin)
+```
+
+### 6.3.4 Combining childcare points and the study area
+
+By using the code chunk below, we are able to extract childcare that is within the specific region to do our analysis later on.
+
+```{r}
+childcare_jw_ppp = childcare_ppp_jit[jw_owin]
+```
+
+Next, summary() is used to reveal the data object as shown in the code chunk below.
+
+```{r}
+summary(childcare_jw_ppp)
+```
+
+The report above reveals that PT is the largest childcare operator in Punggol with a market share of 51%. This is followed by ST, NT and RC.
+
+### 6.3.5 Plotting childcare points and the study area
+
+Plot the combined childcare point and the study area to ensure that the spatial point events are indeed contained within the study area
+
+```{r}
+plot(childcare_jw_ppp)
+```
+
+# 7. Analysing Marked Point Patterns
+
+## 7.1 First-order Spatial Point Patterns Analysis
+
+Density() of spatstat package is used to compute the kernel density objects. Then, plot() is used to plot the output kernel density objects derived. Instead of writing them in two seperate lines, the code chunk below shows how they can be combined into one single line code chunk. 
+
+```{r}
+plot(density(split(rescale(childcare_jw_ppp, 1000))))
+```
+
+Observations form above KDE plots:
+* There are more childcare centres concentrated in the central punggol region
+* NT and ST Childcares appear to be more clustered than the other two operators
+
+Next, intensity() of spatstat package is used to reveal the density of childcare centres by operators as shown the code chunk below.
+
+```{r}
+intensity(rescale(childcare_jw_ppp, 1000))
+```
+The output reveals that childcare centres operate by PT has the highest density of 3.95 units per km square. This is followed by 1.91 units per km square, 1.09 unit per km square and 0.82 unit per km square for ST, NT and RC respectively.
+
+## 7.2 Second-order Multi-tpye Point Patterns Analysis: Cross K-Function
+
+The relationship of ST (i.e. PA runs childcare centres) and NT (i.e. NTUC runs childcare centres) will be analysed using Kcross() of spatstat package.
+
+```{r}
+childcare_Kcross <- Kcross(childcare_jw_ppp, 
+                           i="PT", j="ST",
+                           correction='border')
+plot(childcare_Kcross)
+
+```
+The plot above reveals that there is a sign that the marked spatial point events are not independent spatially. However, a hypothesis test is required to confirm the observation statistically.
+
+## 7.2.1 Performing CSR testing on the Cross K-Function
+
+The hypothesis and test are as follows:
+
+Ho = The distribution of ST childcare centres and NT chilcare centres are spatially independent.
+
+H1= The distribution of ST childcare centres and NT chilcare centres are NOT at spatially independent.
+
+The null hypothesis will be rejected if p-value is smaller than alpha value of 0.001 (i.e. at 99.9% confident interval).
+
+In order to perform the CSR test, the envelope() of spatstat package will be used.
+
+```{r}
+childcare_Kcross.csr <- envelope(childcare_jw_ppp, Kcross, i="PT", j="ST", correction='border', nsim=999)
+```
+```{r}
+plot(childcare_Kcross.csr, xlab="distance(m)", xlim=c(0,500))
+```
+
+The plot above reveals that the are signs that the distribution of childcare centres operate by NT and ST are not independent spatially. Unfortunately, we failed to reject the null hypothesis because the empirical k-cross line is within the envelop of the 99.9% confident interval.
+
+## 7.3 Second-order Multi-tpye Point Patterns Analysis: Cross L-Function
+
+In the code chunk below, Lcross() of spatstat package is used to compute Cross L-function.
+
+```{r}
+childcare_Lcross <- Lcross(childcare_jw_ppp, i="PT", j="ST", correction='border')
+plot(childcare_Lcross, . -r ~ r, 
+     xlab = "distance(m)", 
+     xlim=c(0, 500))
+
+```
+## 7.3.1 Performing CSR testing on the Cross L-Function
+
+The hypothesis and test are as follows:
+
+Ho = The distribution of ST childcare centres and NT chilcare centres are spatially independent.
+
+H1= The distribution of ST childcare centres and NT chilcare centres are NOT at spatially independent.
+
+The null hypothesis will be rejected if p-value is smaller than alpha value of 0.001 (i.e. at 99.9% confident interval).
+
+In order to perform the CSR test, the envelope() of spatstat package will be used.
+
+```{r}
+childcare_Lcross.csr <- envelope(childcare_jw_ppp, Lcross, i="PT", j="ST", correction='border', nsim=999)
+```
+
+```{r}
+plot(childcare_Lcross.csr, . -r ~ r, xlab="distance(m)", xlim=c(0,500))
+```
+
+The plot above reveals that the are signs that the distribution of childcare centres operate by NT and ST are not independent spatially. Unfortunately, we failed to reject the null hypothesis because the empirical L-cross line is within the envelop of the 99.9% confident interval
