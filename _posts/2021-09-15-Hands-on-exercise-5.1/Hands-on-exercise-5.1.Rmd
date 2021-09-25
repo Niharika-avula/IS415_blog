@@ -1,7 +1,7 @@
 ---
 title: "Hands-on Exercise 5.1"
 description: |
- "In this hands-on exercise, I will learn to use  using appropriate functions of spNetwork package: To derive network constrained kernel density estimation (NetKDE), and to perform network G-function and k-function analysis"
+ "In this hands-on exercise, I will learn to use appropriate functions of spNetwork package: To derive network constrained kernel density estimation (NetKDE), and to perform network G-function and k-function analysis"
 author:
   - name: Niharika Avula 
     url: https://example.com/norajones

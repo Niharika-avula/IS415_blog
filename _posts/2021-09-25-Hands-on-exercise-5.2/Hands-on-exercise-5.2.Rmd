@@ -1,5 +1,5 @@
 ---
-title: "Hands-on Exercise 5.1"
+title: "Hands-on Exercise 5.2"
 description: |
  "In this hands-on exercise, I will learn using appropriate R functions to analyse marks spatial point events. The case study aims to discover the spatial point processes of childecare centres by operators in Singapore"
 author:
