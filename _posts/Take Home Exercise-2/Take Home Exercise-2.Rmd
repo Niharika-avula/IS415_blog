@@ -1,0 +1,306 @@
+---
+title: "Take-home Exercise 2: Spatial Point Patterns Analysis of Airbnb Listing in Singapore"
+description: |
+  This exercise aims to investigate if the distribution of Airbnb listings in Singapore are affected by location factors and COVID-19.
+author:
+  - name: Niharika Avula 
+    url: https://example.com/norajones
+date: "`r Sys.Date()`"
+output: 
+  distill::distill_article:
+        toc: TRUE
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE, eval = TRUE, echo = TRUE, message = FALSE, error = FALSE, fig.retina = 3}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1.0 OVERVIEW
+
+## 1.1 ABOUT AIRBNB
+
+TBC
+
+## 1.2 PROBLEM STATEMENT
+
+This exercise aims to investigate if the distribution of Airbnb listings in Singapore are affected by location factors and COVID-19. Therefore, my analysis is split into two parts aiming to answer the following two questions:
+
+* **Section A:** How is the distribution of Airbnb listings in Singapore affected by location factors (such as MRTs, tourist locations etc.)?
+
+* **Section B:** What is the impact of COVID-19 on Airbnb business in Singapore (comparing Airbnb listings data on June 2019 and June 2021)?
+
+# 2.0 GETTING STARTED
+
+This section covers installing the applicable R packages as well as importing the necessary data for analysis
+
+## 2.1 SETTING UP THE ENVIRONMENT
+
+The following R packages will be used in this analysis:
+
+* **sf:** used for importing, managing and processing vector-based geospatial data in R
+* **spatstat:**  used for point pattern analysis to perform 1st and 2nd-order spatial point patterns analysis and derive kernel density estimation (KDE) layer
+* **raster:** used for reading, writing, manipulating, analysing and modelling gridded spatial data (i.e. raster)
+* **maptools:** used for manipulating geographic data, mainly to convert Spatial objects into ppp format of spatstat
+* **tmap:** used for plotting cartographic quality static point patterns maps or interactive maps by using leaflet API
+* **tidyverse:** consists of a family of R packages used for performing data science tasks such as importing, wrangling and visualising data.
+* **plotly:** used to plot interactive plots
+* **ggthemes:** is an extension of ggplot, with more advanced themes for plotting
+
+```{r}
+packages <- c('maptools', 'sf', 'raster', 'spatstat', 'tmap', 'tidyverse', 'plotly', 'ggthemes')
+
+for (p in packages){
+  if (!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+  }
+
+```
+
+## 2.2 IMPORTING DATA
+
+The table below shows all the data that will be imported for this analysis
+
+Data Type         | Name                                   | Source
+------------------|----------------------------------------|----------------------------
+Geospatial        |Master Plan 2014 Subzone Boundary (Web) | [link](https://data.gov.sg/dataset/master-plan-2014-subzone-boundary-web)
+Geospatial        |MRT & LRT Locations Aug 2021            | [link](https://datamall.lta.gov.sg/content/datamall/en/search_datasets.html?searchText=mrt)
+Aspatial          |Singapore Airbnb Listings June 2019     | [link](http://insideairbnb.com/get-the-data.html)
+Aspatial          |Singapore Airbnb Listings July 2021     | [link](http://insideairbnb.com/get-the-data.html)
+Aspatial          |Tourism                                 | OneMap
+Aspatial          |Hotels                                  | OneMap
+
+**DATA TALKING POINTS:**
+
+* In order to investigate if the distribution of Airbnb listings are affected by location factors, the following factors are considered in this analysis
+  + **Tourism** - Staying in near proximity to major tourist attractions would be convenient and hence would be an important consideration. A glance through this data set shows that it contains tourist attractions of various types such as heritage sites, museums, important buildings, parks etc
+  + **Hotels** - As hotels are often in the city center with proximity to important amenities such as convenient stores, money exchangers etc, it will be an important consideration as well to see if it impacts the distributions of Airbnb listing locations
+  + **MRT & LRT Locations** - Definitely MRT & LRT location is an important factor, especially in Singapore's context where it is the most convenient mode of public transportation and often there is an accompanying bus stop, taxi stand and shopping center near majority of the MRT stations.
+  
+* In order to investigate the impact of COVID-19 on Airbnb listings, listings data from June 2019 and July 2021 are imported
+
+### 2.2.1 IMPORTING GEOSPATIAL DATA
+
+``` {r}
+mpsz_sf <- st_read(dsn = "data/geospatial", 
+                   layer = "MP14_SUBZONE_WEB_PL")
+```
+``` {r}
+MRT_LRT_Network_sf <- st_read(dsn = "data/geospatial", 
+                   layer = "MRTLRTStnPtt")
+```
+
+### 2.2.2 IMPORTING ASPATIAL DATA
+
+```{r}
+Listings_2019 <- read_csv("data/aspatial/listings_30062019.csv", show_col_types=FALSE)
+Listings_2021 <- read_csv("data/aspatial/listings_19072021.csv", show_col_types=FALSE)
+Hotels <- read_csv("data/aspatial/hotels.csv", show_col_types=FALSE)
+Tourism <- read_csv("data/aspatial/tourism.csv", show_col_types=FALSE)
+
+```
+
+We have come to end of Section 2 with R packages installed and the Geospatial and Aspatial data imported, next section will cover data wrangling process of the imported data
+Verifying the project CRS of the above imported data
+
+# 3.0 GEOSPATIAL DATA WRANGLING
+
+This section covers all the steps taken in the pre-processing of the **mpsz_sf** and **MRT_LRT_Network_sf** data, which includes the following steps:
+
+* Verifying and transforming the Coordinate system
+* Handling missing values
+* Handling invalid geometries
+
+*Took reference from senior's project given as sample for this section*
+
+## 3.1 VERIFYING & TRANSFORMING CRS
+
+``` {r}
+st_crs(mpsz_sf) 
+```
+``` {r}
+st_crs(MRT_LRT_Network_sf) 
+```
+
+It can be seen that while the projected CRS is SVY21, the current EPSG Code is 9001, hence the next step is to assign the correct 3414 EPSG code
+
+```{r}
+mpsz_sf <- st_set_crs(mpsz_sf, 3414)
+st_crs(mpsz_sf) 
+
+```
+
+``` {r}
+MRT_LRT_Network_sf <- st_set_crs(MRT_LRT_Network_sf, 3414)
+st_crs(MRT_LRT_Network_sf) 
+```
+The correct projected CRS with EPSG Code 3413 is assigned and now we can move on to the next step
+
+## 3.2 Handling missing values
+
+Checking for missing values as they can impact future calculations and visualisations.
+
+```{r}
+mpsz_sf[rowSums(is.na(mpsz_sf))!=0,]
+```
+```{r}
+MRT_LRT_Network_sf[rowSums(is.na(MRT_LRT_Network_sf))!=0,]
+```
+
+There are no missing values in both **mpsz_sf** and **MRT_LRT_Network_sf** data
+
+## 3.2 Handling invalid geometries
+
+Checking for invalid geometries as they can impact future calculations and visualisations.
+
+```{r}
+length(which(st_is_valid(mpsz_sf) == FALSE))
+```
+```{r}
+length(which(st_is_valid(MRT_LRT_Network_sf) == FALSE))
+```
+It can be seen that there are 9 invalid geometries in the **mpsz_sf** data while there are no invalid geometries in **MRT_LRT_Network_sf** data, hence the invalid geometries need to be made valid
+
+```{r}
+mpsz_sf <- st_make_valid(mpsz_sf)
+length(which(st_is_valid(mpsz_sf) == FALSE))
+```
+Invalid geometries have been handled, there are no more invalid geometries in both datasets.
+
+**VISUALISING GEOSPATIAL DATA**
+
+Before we jump into the analysis, it is a good practice to visualise the geospatial data
+
+```{r}
+tmap_mode("view")
+tm_shape(mpsz_sf) +
+  tm_borders(alpha = 0.5) +
+  tmap_options(check.and.fix = TRUE) +
+  
+tm_shape(MRT_LRT_Network_sf) +
+  tm_dots(col = 'red', size = 0.02)
+```
+
+```{r}
+tmap_mode("plot")
+```
+
+With that, we have come to end of section 3 with the pre-processing of geospatial **mpsz_sf** and **MRT_LRT_Network_sf** data completed, next section will be looking into the same process for Aspatial data.
+
+# 4.0 ASPATIAL DATA WRANGLING
+
+This section covers all the steps taken in the pre-processing of the **Listings_2019**, **Listings_2021**, **Hotels** and **Tourism** data, which includes the following steps:
+
+* Handling missing values
+* Converting into sf objects and transforming the Coordinate system
+
+Let's have a glimpse at the data first
+
+```{r}
+glimpse(Listings_2019)
+```
+**Listings_2019** has latitude and longitude features
+
+```{r}
+glimpse(Listings_2021)
+```
+**Listings_2021** has latitude and longitude features
+
+```{r}
+glimpse(Hotels)
+```
+**Hotels** has Lat and Lng features
+
+```{r}
+glimpse(Tourism)
+```
+**Tourism** has both Lat and Lng and latitude and longitude features, this needs to be further explored to check if there are missing values
+
+## 4.1 Handling missing values
+
+**LISTING_2019 DATA**
+```{r}
+sum(is.na(Listings_2019$longitude))
+```
+```{r}
+sum(is.na(Listings_2019$latitude))
+```
+No Missing values in the latitude and longitude columns in Listing_2019 data
+
+**LISTING_2021 DATA**
+```{r}
+sum(is.na(Listings_2021$longitude))
+```
+
+```{r}
+sum(is.na(Listings_2021$latitude))
+```
+No Missing values in the latitude and longitude columns in Listing_2021 data
+
+**HOTELS DATA**
+```{r}
+sum(is.na(Hotels$Lng))
+```
+
+```{r}
+sum(is.na(Hotels$Lat))
+```
+No Missing values in the Lng and Lat columns in Hotels data
+
+**TOURISM DATA**
+```{r}
+sum(is.na(Tourism$Lng))
+```
+```{r}
+sum(is.na(Tourism$Lat))
+```
+No Missing values in the Lng and Lat columns in Tourism data
+
+```{r}
+sum(is.na(Tourism$LATITUDE))
+```
+```{r}
+sum(is.na(Tourism$LONGTITUDE))
+```
+It can be seen that there is one missing values in the Longitude and Latitude columns in Tourism data, hence will be using the Lat and Lng for Tourism data
+
+## 4.2  CONVERTING INTO SF OBJECTS & TRANSFORMING CRS
+
+This converts the below dataframes into sf objects and transform the projected CRS to 3414
+
+```{r}
+Listings_2019_sf <- st_as_sf(Listings_2019, 
+                    coords = c("longitude",
+                               "latitude"),
+                    crs = 3414)
+
+Listings_2021_sf <- st_as_sf(Listings_2021, 
+                    coords = c("longitude",
+                               "latitude"),
+                    crs = 3414)
+
+Hotels_sf <- st_as_sf(Hotels, 
+                    coords = c("Lng",
+                               "Lat"),
+                    crs = 3414)
+
+Tourism_sf <- st_as_sf(Tourism, 
+                    coords = c("Lng",
+                               "Lat"),
+                    crs = 3414)
+```
+
+
+We have come to end of section 4 with the pre-processing of aspatial **Listings_2019**, **Listings_2021**, **Hotels** and **Tourism** data completed
+
+
+# COMBINING GEOSPATIAL & ASPATIAL DATA
+
+
+
+
+
+
+
