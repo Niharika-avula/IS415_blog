@@ -12,7 +12,7 @@ output:
         toc_depth: 3
 ---
 
-```{r setup, include=FALSE, eval = TRUE, echo = TRUE, message = FALSE, error = FALSE, fig.retina = 3}
+```{r setup, include=FALSE, eval = TRUE, echo = TRUE, message = FALSE, error = FALSE, fig.retina = 3, cache = TRUE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Airbnb is primarily an online accommodation rental marketplace which enables hosts to rent out their properties or rooms to guests. It has also expanded to offer “experiences” which the company describes as “unique activities we can do together, led by a world of hosts”. Since its inception in 2008, Airbnb has expanded into over 34,000 cities across 191 countries and opened its first international office in Hamburg, Germany in 2011. Though the company began as a privately owned business, it went public in 2020 at the beginning stages of COVID-19 pandemic. 
 
-Airbnb does not actually own the properties it offers for rent on its website, but rather generates its revenue through service fees to hosts and guests. In 2019, Airbnb was valued at 35 billion U.S. dollars. While SIngapore was their first choice to agrgresively expand in Asian markets, interestingly, Singapore is one of the global cities that has yet to legalise short-term rentals offered by Airbnb. Nonetheless, it will be intereesting to see how Airbnb is faring in Singapore, especially given the recent COVID-19.
+Airbnb does not actually own the properties it offers for rent on its website, but rather generates its revenue through service fees to hosts and guests. In 2019, Airbnb was valued at 35 billion U.S. dollars. While SIngapore was their first choice to agrgresively expand in Asian markets, interestingly, Singapore is one of the global cities that has yet to legalise short-term rentals offered by Airbnb. Nonetheless, it will be interesting to see how Airbnb is faring in Singapore, especially given the recent COVID-19.
 
 ## 1.2 PROBLEM STATEMENT
 
@@ -881,7 +881,7 @@ Central_region_SP = as(Central_region, "SpatialPolygons")
 Central_region_owin <- as(Central_region_SP, "owin")
 plot(Central_region_owin)
 ```
-## 6.1.7 COMBINING POINT EVENTS OBJECT AND CENTRAL REGION OWIN OBJECT 
+### 6.1.7 COMBINING POINT EVENTS OBJECT AND CENTRAL REGION OWIN OBJECT 
 
 ```{r}
 MRT_LRT_network_ppp_CR = MRT_LRT_Network_ppp[Central_region_owin]
@@ -913,7 +913,7 @@ plot(Hotels_ppp_CR)
 plot(Tourism_ppp_CR)
 ```
 
-## 6.1.8 RESCALLING KDE VALUES FOR CENTRAL REGION
+### 6.1.8 RESCALLING KDE VALUES FOR CENTRAL REGION
 
 ```{r}
 MRT_LRT_network_ppp_CR_km <- rescale(MRT_LRT_network_ppp_CR, 1000, 'km')
@@ -1133,6 +1133,19 @@ tm_shape(Listings_2019_sf) +
    tm_dots(col = 'room_type', size = 0.02, title = "Room Type")
 ```
 
+```{r}
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(Listings_2019_sf) +
+  tm_dots(col = 'room_type', 
+          size = 0.5) +
+tm_facets(by="room_type")
+```
+**OBSERVATIONS**
+* There were definitely more **Private room** listings island-wide, followed by **Entire home/Apt** listings and finally **Shared room** listings.
+* **Shared room8** listings appear to be more concentrated in the central region where as **Private room** listings appear to be more equally distributed island-wide and **Entire home/Apt** appear to be concentrated mostly in the residential neighbourhoods of Singapore.
+
+
 **AIRBNB LISTINGS JUNE 2021**
 
 ```{r}
@@ -1144,8 +1157,444 @@ tm_shape(Listings_2021_sf) +
 tmap_mode("plot")
 ```
 
-From the above two plots, we can see that while there are three room types in the June 2019 data, there are four room types in June 2021 data, therefore in order to make a fair comparison, **Hotel** room type will be excluded from June 2021 data.
+```{r}
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(Listings_2021_sf) +
+  tm_dots(col = 'room_type', 
+          size = 0.5) +
+tm_facets(by="room_type")
+```
+
+**OBSERVATIONS**
+* There is an additional category called **Hotel Room** in the June 2021 Airbnb listings
+* There were definitely more **Private room** listings island-wide, followed by **Entire home/Apt** listings and finally **Shared room** listings.
+* **Shared room8** listings appear to be more concentrated in the central region where as **Private room** listings appear to be more equally distributed island-wide and **Entire home/Apt** appear to be concentrated mostly in the residential neighborhoods of Singapore.
+
+### 7.1.1 PRE-PROCESSING AIRBNB LISTINGS FOR JUNE 2019 AND JUNE 2021
+
+**EXTRACTING EACH ROOM TYPE FROM THE DATA FRAME**
+
+```{r}
+Listings_2019_SF_PR <- Listings_2019_sf[Listings_2019_sf$room_type == "Private room",]
+Listings_2019_SF_EH <- Listings_2019_sf[Listings_2019_sf$room_type == "Entire home/apt",]
+Listings_2019_SF_SR <- Listings_2019_sf[Listings_2019_sf$room_type == "Shared room",]
+
+Listings_2021_SF_PR <- Listings_2021_sf[Listings_2021_sf$room_type == "Private room",]
+Listings_2021_SF_EH <- Listings_2021_sf[Listings_2021_sf$room_type == "Entire home/apt",]
+Listings_2021_SF_SR <- Listings_2021_sf[Listings_2021_sf$room_type == "Shared room",]
+Listings_2021_SF_HR <- Listings_2021_sf[Listings_2021_sf$room_type == "Hotel room",]
+```
+
+**CONVERTING SF DATA FRAMES TO SP'S SPATIAL* CLASS**
+
+```{r}
+Listings_2019_PR <- as_Spatial(Listings_2019_SF_PR)
+Listings_2019_EH <- as_Spatial(Listings_2019_SF_EH)
+Listings_2019_SR <- as_Spatial(Listings_2019_SF_SR)
+
+Listings_2021_PR <- as_Spatial(Listings_2021_SF_PR)
+Listings_2021_EH <- as_Spatial(Listings_2021_SF_EH)
+Listings_2021_SR <- as_Spatial(Listings_2021_SF_SR)
+Listings_2021_HR <- as_Spatial(Listings_2021_SF_HR)
+```
+
+**CONVERTING SPATIAL* CLASS INTO GENERIC SP FORMAT**
+
+```{r}
+Listings_2019_SP_PR <- as(Listings_2019_PR, "SpatialPoints")
+Listings_2019_SP_EH <- as(Listings_2019_EH, "SpatialPoints")
+Listings_2019_SP_SR <- as(Listings_2019_SR, "SpatialPoints")
+
+Listings_2021_SP_PR <- as(Listings_2021_PR, "SpatialPoints")
+Listings_2021_SP_EH <- as(Listings_2021_EH, "SpatialPoints")
+Listings_2021_SP_SR <- as(Listings_2021_SR, "SpatialPoints")
+Listings_2021_SP_HR <- as(Listings_2021_HR, "SpatialPoints")
+```
+
+**CONVERTING GENERIC SP FORMAT INTO SPATSTAT'S PPP FORMAT**
+
+```{r}
+Listings_2019_PPP_PR <- as(Listings_2019_SP_PR, "ppp")
+Listings_2019_PPP_EH <- as(Listings_2019_SP_EH, "ppp")
+Listings_2019_PPP_SR <- as(Listings_2019_SP_SR, "ppp")
+
+Listings_2021_PPP_PR <- as(Listings_2021_SP_PR, "ppp")
+Listings_2021_PPP_EH <- as(Listings_2021_SP_EH, "ppp")
+Listings_2021_PPP_SR <- as(Listings_2021_SP_SR, "ppp")
+Listings_2021_PPP_HR <- as(Listings_2021_SP_HR, "ppp")
+```
+
+**HANDLING DUPLICATED POINTS**
+
+```{r}
+any(duplicated(Listings_2019_PPP_PR)) 
+```
+```{r}
+any(duplicated(Listings_2019_PPP_EH)) 
+```
+```{r}
+any(duplicated(Listings_2019_PPP_SR)) 
+```
+```{r}
+any(duplicated(Listings_2021_PPP_PR)) 
+```
+```{r}
+any(duplicated(Listings_2021_PPP_EH)) 
+```
+```{r}
+any(duplicated(Listings_2021_PPP_SR)) 
+```
+```{r}
+any(duplicated(Listings_2021_PPP_HR)) 
+```
+
+Therefore, all of the baove except for **Listings_2019_PPP_PR** have duplicated values and need to be handled
+
+```{r}
+Listings_2019_PPP_Jit_PR <- rjitter(Listings_2019_PPP_PR, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+Listings_2019_PPP_Jit_EH <- rjitter(Listings_2019_PPP_EH, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+Listings_2019_PPP_Jit_SR <- rjitter(Listings_2019_PPP_SR, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+
+Listings_2021_PPP_Jit_PR <- rjitter(Listings_2021_PPP_PR, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+Listings_2021_PPP_Jit_EH <- rjitter(Listings_2021_PPP_EH, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+Listings_2021_PPP_Jit_SR <- rjitter(Listings_2021_PPP_SR, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+Listings_2021_PPP_Jit_HR <- rjitter(Listings_2021_PPP_HR, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+
+```
+
+**COMBINING POINT EVENT OBJECTS AND OWIN OBJECT**
+
+```{r}
+Listings_2019_PPP_SG_PR = Listings_2019_PPP_Jit_PR[sg_owin]
+Listings_2019_PPP_SG_EH = Listings_2019_PPP_Jit_EH[sg_owin]
+Listings_2019_PPP_SG_SR = Listings_2019_PPP_Jit_SR[sg_owin]
+
+Listings_2021_PPP_SG_PR = Listings_2021_PPP_Jit_PR[sg_owin]
+Listings_2021_PPP_SG_EH = Listings_2021_PPP_Jit_EH[sg_owin]
+Listings_2021_PPP_SG_SR = Listings_2021_PPP_Jit_SR[sg_owin]
+Listings_2021_PPP_SG_HR = Listings_2021_PPP_Jit_HR[sg_owin]
+```
+
+**RESCALLING KDE VALUES FOR CENTRAL REGION**
+
+```{r}
+Listings_2019_PPP_SG_PR_km <- rescale(Listings_2019_PPP_SG_PR, 1000, 'km')
+Listings_2019_PPP_SG_EH_km <- rescale(Listings_2019_PPP_SG_EH, 1000, 'km')
+Listings_2019_PPP_SG_SR_km <- rescale(Listings_2019_PPP_SG_SR, 1000, 'km')
+
+Listings_2021_PPP_SG_PR_km <- rescale(Listings_2021_PPP_SG_PR, 1000, 'km')
+Listings_2021_PPP_SG_EH_km <- rescale(Listings_2021_PPP_SG_EH, 1000, 'km')
+Listings_2021_PPP_SG_SR_km <- rescale(Listings_2021_PPP_SG_SR, 1000, 'km')
+Listings_2021_PPP_SG_HR_km <- rescale(Listings_2021_PPP_SG_HR, 1000, 'km')
+
+```
+
+
+### 7.1.2 COMPUTING KERNEL DENSITY ESTIMATION
+
+This section covers the steps taken to compute the Kernel Density estimation, the following settings are used
+
+* **BANDWIDTH METHODS**: bw.diggle()
+ 
+* **KERNEL METHODS**: gaussian
+ 
+* **FIXED KDE BANDWIDTH**
+
+```{r}
+kde_Listings_2019_SG_PR <- density(Listings_2019_PPP_SG_PR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_Listings_2019_SG_EH <- density(Listings_2019_PPP_SG_EH_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_Listings_2019_SG_SR <- density(Listings_2019_PPP_SG_SR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+
+kde_Listings_2021_SG_PR <- density(Listings_2021_PPP_SG_PR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_Listings_2021_SG_EH <- density(Listings_2021_PPP_SG_EH_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_Listings_2021_SG_SR <- density(Listings_2021_PPP_SG_SR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_Listings_2021_SG_HR <- density(Listings_2021_PPP_SG_HR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+```
+
+**PLOTTING KERNEL DENSITY MAPS - JUNE 2019 LISTINGS**
+
+*Private Rooms*
+
+```{r}
+plot(kde_Listings_2019_SG_PR)
+```
+
+*Entire Appartment*
+
+```{r}
+plot(kde_Listings_2019_SG_EH)
+```
+*Shared Rooms*
+
+```{r}
+plot(kde_Listings_2019_SG_SR)
+```
+**PLOTTING KERNEL DENSITY MAPS - JUNE 2021 LISTINGS**
+
+*Private Rooms*
+```{r}
+plot(kde_Listings_2021_SG_PR)
+```
+
+*Entire Appartment*
+
+```{r}
+plot(kde_Listings_2021_SG_EH)
+```
+
+*Shared Rooms*
+
+```{r}
+plot(kde_Listings_2021_SG_SR)
+```
+*Hotel Rooms*
+
+```{r}
+plot(kde_Listings_2021_SG_HR)
+```
+
+
+### 7.1.3 PRE-PROCESSING FOR PLOTTING ON OPENSTREETMAPS
+
+**CONVERTING KDE OUTPUT INTO GRID OBJECT**
+
+```{r}
+
+gridded_kde_Listings_2019_SG_PR <- as.SpatialGridDataFrame.im(kde_Listings_2019_SG_PR)
+gridded_kde_Listings_2019_SG_EH <- as.SpatialGridDataFrame.im(kde_Listings_2019_SG_EH)
+gridded_kde_Listings_2019_SG_SR <- as.SpatialGridDataFrame.im(kde_Listings_2019_SG_SR)
+
+gridded_kde_Listings_2021_SG_PR <- as.SpatialGridDataFrame.im(kde_Listings_2021_SG_PR)
+gridded_kde_Listings_2021_SG_EH <- as.SpatialGridDataFrame.im(kde_Listings_2021_SG_EH)
+gridded_kde_Listings_2021_SG_SR <- as.SpatialGridDataFrame.im(kde_Listings_2021_SG_SR)
+gridded_kde_Listings_2021_SG_HR <- as.SpatialGridDataFrame.im(kde_Listings_2021_SG_HR)
+
+```
+
+
+**CONVERTING GRIDDED OUTPUT INTO RASTER**
+
+```{r}
+kde_Listings_2019_SG_PR_raster <- raster(gridded_kde_Listings_2019_SG_PR)
+projection(kde_Listings_2019_SG_PR_raster) <- CRS("+init=EPSG:3414")
+
+kde_Listings_2019_SG_EH_raster <- raster(gridded_kde_Listings_2019_SG_EH)
+projection(kde_Listings_2019_SG_EH_raster) <- CRS("+init=EPSG:3414")
+
+kde_Listings_2019_SG_SR_raster <- raster(gridded_kde_Listings_2019_SG_SR)
+projection(kde_Listings_2019_SG_SR_raster) <- CRS("+init=EPSG:3414")
+
+kde_Listings_2021_SG_PR_raster <- raster(gridded_kde_Listings_2021_SG_PR)
+projection(kde_Listings_2021_SG_PR_raster) <- CRS("+init=EPSG:3414")
+
+kde_Listings_2021_SG_EH_raster <- raster(gridded_kde_Listings_2021_SG_EH)
+projection(kde_Listings_2021_SG_PR_raster) <- CRS("+init=EPSG:3414")
+
+kde_Listings_2021_SG_SR_raster <- raster(gridded_kde_Listings_2021_SG_SR)
+projection(kde_Listings_2021_SG_PR_raster) <- CRS("+init=EPSG:3414")
+
+kde_Listings_2021_SG_HR_raster <- raster(gridded_kde_Listings_2021_SG_HR)
+projection(kde_Listings_2021_SG_PR_raster) <- CRS("+init=EPSG:3414")
+
+```
+
+**DISPLAYING KERNEL DENSITY MAPS ON OPENSTREETMAP**
+
+*PRIVATE ROOM - JUNE 2019 VS JUNE 2021*
+
+Listings_2019_SF_PR <- Listings_2019_sf[Listings_2019_sf$room_type == "Private room",]
+Listings_2019_SF_EH <- Listings_2019_sf[Listings_2019_sf$room_type == "Entire home/apt",]
+Listings_2019_SF_SR <- Listings_2019_sf[Listings_2019_sf$room_type == "Shared room",]
+
+Listings_2021_SF_PR <- Listings_2021_sf[Listings_2021_sf$room_type == "Private room",]
+Listings_2021_SF_EH <- Listings_2021_sf[Listings_2021_sf$room_type == "Entire home/apt",]
+Listings_2021_SF_SR <- Listings_2021_sf[Listings_2021_sf$room_type == "Shared room",]
+Listings_2021_SF_HR
+
+```{r}
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(Listings_2019_SF_PR ) +
+  tm_dots(col = 'room_type', 
+          size = 0.5, title = "June 2019", palette = "Reds") 
+
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(Listings_2021_SF_PR ) +
+  tm_dots(col = 'room_type', 
+          size = 0.5, title = "June 2021")
+```
 
 
 
+```{r}
+tmap_mode("view")
+
+tm_shape(kde_Listings_2019_SG_PR_raster) + 
+  tm_raster("v", title = "Private Rooms June 2019", alpha = 0.7, palette = "Reds") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE) +
+
+tm_shape(kde_Listings_2021_SG_PR_raster) + 
+  tm_raster("v", title = "Private Rooms June 2021", alpha = 0.7, palette = "Blues") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE)
+```
+
+**Observations**: There are more private room listings in June 2019 as compared to June 2021
+
+
+*ENTIRE APARTMENT - JUNE 2019 VS JUNE 2021*
+
+```{r}
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(Listings_2019_SF_EH ) +
+  tm_dots(col = 'room_type', 
+          size = 0.5, title = "June 2019", palette = "Reds") 
+
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(Listings_2021_SF_EH ) +
+  tm_dots(col = 'room_type', 
+          size = 0.5, title = "June 2021")
+```
+
+```{r}
+tmap_mode("view")
+
+tm_shape(kde_Listings_2019_SG_EH_raster) + 
+  tm_raster("v", title = "Entire Apartments June 2019", alpha = 0.7, palette = "Reds") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE) +
+
+tm_shape(kde_Listings_2021_SG_EH_raster) + 
+  tm_raster("v", title = "Entire Apartments June 2021", alpha = 0.7, palette = "Blues") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE)
+```
+**Observations**: There are more Entire Apartment listings in June 2019 as compared to June 2021
+
+*SHARED ROOM - JUNE 2019 VS JUNE 2021*
+
+```{r}
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(Listings_2019_SF_SR ) +
+  tm_dots(col = 'room_type', 
+          size = 0.5, title = "June 2019", palette = "Reds") 
+
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+tm_shape(Listings_2021_SF_SR ) +
+  tm_dots(col = 'room_type', 
+          size = 0.5, title = "June 2021")
+```
+
+```{r}
+tmap_mode("view")
+
+tm_shape(kde_Listings_2019_SG_SR_raster) + 
+  tm_raster("v", title = "Shared room June 2019", alpha = 0.7, palette = "Reds") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE) +
+
+tm_shape(kde_Listings_2021_SG_SR_raster) + 
+  tm_raster("v", title = "Shared room June 2021", alpha = 0.7, palette = "Blues") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE)
+```
+
+*HOTEL ROOM - JUNE 2021*
+
+```{r}
+tmap_mode("view")
+
+tm_shape(kde_Listings_2021_SG_HR_raster) + 
+  tm_raster("v", title = "Hotel room June 2021", alpha = 0.7, palette = "Blues") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE)
+```
+
+```{r}
+tmap_mode("plot")
+```
 ## 7.2 [SECTION B] SECOND-ORDER SPATIAL POINT PATTERN ANALYSIS
+
+This section covers the steps taken to perform Second-order Spatial Point Patterns Analysis to determine the impact of COVID-19 on Airbnb listings in June 2019 and June 2021. For the purpose of this analysis, will be applying the Second-order Multi-type Point Patterns Analysis using Cross L-Function
+
+### 7.2.1 SECOND-ORDER SPATIAL POINT PATTERN ANALYSIS [PRIVATE ROOM VS ENTIRE APPARTMENT - JUNE 2019]
+
+**CREATING NEW COMBINED PPP OBJECT**
+
+This new combined ppp object is created from Airbnb listings for private rooms from June 2019 and June 2021
+
+```{r}
+Combined_PR_EH_ppp <- superimpose(PR_2019 = Listings_2019_PPP_SG_PR,
+                                  EH_2019 = Listings_2019_PPP_SG_EH)
+```
+
+
+**MULTI-TYPE POINT PATTERNS ANALYSIS**
+
+```{r}
+Combined_PR_EH_Lcross_2019 <- Lcross(Combined_PR_EH_ppp, i="PR_2019", j="EH_2019", correction='border')
+plot(Combined_PR_EH_Lcross_2019, . -r ~ r, 
+     xlab = "distance(m)", 
+     xlim=c(0, 500))
+
+```
+
+**PERFORMING CSR ON CROSS L-FUNCTION**
+
+The hypothesis and test are as follows:
+
+Ho = The distribution of private room listings in June 2019 and June 2021 are spatially independent.
+
+H1= The distribution of private room listings in June 2019 and June 2021 are NOT spatially independent.
+
+The null hypothesis will be rejected if p-value is smaller than alpha value of 0.001 (i.e. at 99.9% confident interval).
+
+In order to perform the CSR test, the envelope() of spatstat package will be used
+
+
+
+**OBERVATIONS:**
+
+
