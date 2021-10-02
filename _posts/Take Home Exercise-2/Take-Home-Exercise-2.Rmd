@@ -1578,23 +1578,31 @@ Combined_PR_EH_Lcross_2019 <- Lcross(Combined_PR_EH_ppp, i="PR_2019", j="EH_2019
 plot(Combined_PR_EH_Lcross_2019, . -r ~ r, 
      xlab = "distance(m)", 
      xlim=c(0, 500))
-
 ```
 
 **PERFORMING CSR ON CROSS L-FUNCTION**
 
 The hypothesis and test are as follows:
 
-Ho = The distribution of private room listings in June 2019 and June 2021 are spatially independent.
+Ho = The distribution of private room listings and Entire House listings in June 2019 are spatially independent.
 
-H1= The distribution of private room listings in June 2019 and June 2021 are NOT spatially independent.
+H1= The distribution of private room listings and Entire House listings in June 2019 are NOT spatially independent.
 
 The null hypothesis will be rejected if p-value is smaller than alpha value of 0.001 (i.e. at 99.9% confident interval).
 
 In order to perform the CSR test, the envelope() of spatstat package will be used
 
+```{r}
+Combined_PR_EH_Lcross_2019.csr <- envelope(Combined_PR_EH_ppp, Lcross, i="PR_2019", j="EH_2019", correction='border', nsim=99)
 
+```
+
+```{r}
+plot(Combined_PR_EH_Lcross_2019.csr, xlab="distance(m)", xlim=c(0,500))
+```
 
 **OBERVATIONS:**
 
+* * The black line is above the red line and beyond the upper confidence envelop, hence the null hypothesis is rejected at 99.9% confidence interval.
 
+The above steps can be repeated for the other room types as well to determine if they are spatially independent. For the putpose of this assignment, it will not be showcased due to time constraint.
