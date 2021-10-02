@@ -1,0 +1,1151 @@
+---
+title: "Take-home Exercise 2: Spatial Point Patterns Analysis of Airbnb Listing in Singapore"
+description: |
+  This exercise aims to investigate if the distribution of Airbnb listings in Singapore are affected by location factors and COVID-19.
+author:
+  - name: Niharika Avula 
+    url: https://example.com/norajones
+date: "`r Sys.Date()`"
+output: 
+  distill::distill_article:
+        toc: TRUE
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE, eval = TRUE, echo = TRUE, message = FALSE, error = FALSE, fig.retina = 3}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1.0 OVERVIEW
+
+## 1.1 ABOUT AIRBNB
+
+Airbnb is primarily an online accommodation rental marketplace which enables hosts to rent out their properties or rooms to guests. It has also expanded to offer “experiences” which the company describes as “unique activities we can do together, led by a world of hosts”. Since its inception in 2008, Airbnb has expanded into over 34,000 cities across 191 countries and opened its first international office in Hamburg, Germany in 2011. Though the company began as a privately owned business, it went public in 2020 at the beginning stages of COVID-19 pandemic. 
+
+Airbnb does not actually own the properties it offers for rent on its website, but rather generates its revenue through service fees to hosts and guests. In 2019, Airbnb was valued at 35 billion U.S. dollars. While SIngapore was their first choice to agrgresively expand in Asian markets, interestingly, Singapore is one of the global cities that has yet to legalise short-term rentals offered by Airbnb. Nonetheless, it will be intereesting to see how Airbnb is faring in Singapore, especially given the recent COVID-19.
+
+## 1.2 PROBLEM STATEMENT
+
+This exercise aims to investigate if the distribution of Airbnb listings in Singapore are affected by location factors and COVID-19. Therefore, my analysis is split into two parts aiming to answer the following two questions:
+
+* **Section A:** How is the distribution of Airbnb listings in Singapore affected by location factors (such as MRTs, tourist locations etc.)?
+
+* **Section B:** What is the impact of COVID-19 on Airbnb business in Singapore (comparing Airbnb listings data on June 2019 and June 2021)?
+
+# 2.0 GETTING STARTED
+
+This section covers installing the applicable R packages as well as importing the necessary data for analysis
+
+## 2.1 SETTING UP THE ENVIRONMENT
+
+The following R packages will be used in this analysis:
+
+* **sf:** used for importing, managing and processing vector-based geospatial data in R
+* **spatstat:**  used for point pattern analysis to perform 1st and 2nd-order spatial point patterns analysis and derive kernel density estimation (KDE) layer
+* **raster:** used for reading, writing, manipulating, analysing and modelling gridded spatial data (i.e. raster)
+* **maptools:** used for manipulating geographic data, mainly to convert Spatial objects into ppp format of spatstat
+* **tmap:** used for plotting cartographic quality static point patterns maps or interactive maps by using leaflet API
+* **tidyverse:** consists of a family of R packages used for performing data science tasks such as importing, wrangling and visualising data.
+* **plotly:** used to plot interactive plots
+* **ggthemes:** is an extension of ggplot, with more advanced themes for plotting
+
+```{r}
+packages <- c('maptools', 'sf', 'raster', 'spatstat', 'tmap', 'tidyverse', 'plotly', 'ggthemes')
+
+for (p in packages){
+  if (!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+  }
+
+```
+
+## 2.2 IMPORTING DATA
+
+The table below shows all the data that will be imported for this analysis
+
+Data Type         | Name                                   | Source
+------------------|----------------------------------------|----------------------------
+Geospatial        |Master Plan 2014 Subzone Boundary (Web) | [link](https://data.gov.sg/dataset/master-plan-2014-subzone-boundary-web)
+Geospatial        |MRT & LRT Locations Aug 2021            | [link](https://datamall.lta.gov.sg/content/datamall/en/search_datasets.html?searchText=mrt)
+Geospatial        |Singapore National Boundary             |[link](https://data.gov.sg/dataset/national-map-polygon)
+Aspatial          |Singapore Airbnb Listings June 2019     | [link](http://insideairbnb.com/get-the-data.html)
+Aspatial          |Singapore Airbnb Listings July 2021     | [link](http://insideairbnb.com/get-the-data.html)
+Aspatial          |Tourism                                 | OneMap
+Aspatial          |Hotels                                  | OneMap
+
+**DATA TALKING POINTS:**
+
+* In order to investigate if the distribution of Airbnb listings are affected by location factors, the following factors are considered in this analysis
+  + **Tourism** - Staying in near proximity to major tourist attractions would be convenient and hence would be an important consideration. A glance through this data set shows that it contains tourist attractions of various types such as heritage sites, museums, important buildings, parks etc
+  + **Hotels** - As hotels are often in the city center with proximity to important amenities such as convenient stores, money exchangers etc, it will be an important consideration as well to see if it impacts the distributions of Airbnb listing locations
+  + **MRT & LRT Locations** - Definitely MRT & LRT location is an important factor, especially in Singapore's context where it is the most convenient mode of public transportation and often there is an accompanying bus stop, taxi stand and shopping center near majority of the MRT stations.
+  
+* In order to investigate the impact of COVID-19 on Airbnb listings, listings data from June 2019 and July 2021 are imported
+
+### 2.2.1 IMPORTING GEOSPATIAL DATA
+
+``` {r}
+mpsz_sf <- st_read(dsn = "data/geospatial", 
+                   layer = "MP14_SUBZONE_WEB_PL")
+```
+``` {r}
+MRT_LRT_Network_sf <- st_read(dsn = "data/geospatial", 
+                   layer = "MRTLRTStnPtt")
+```
+``` {r}
+sg_sf <- st_read(dsn = "data/geospatial", layer="CostalOutline")
+```
+
+### 2.2.2 IMPORTING ASPATIAL DATA
+
+```{r}
+Listings_2019 <- read_csv("data/aspatial/listings_30062019.csv", show_col_types=FALSE)
+Listings_2021 <- read_csv("data/aspatial/listings_19072021.csv", show_col_types=FALSE)
+Hotels <- read_csv("data/aspatial/hotels.csv", show_col_types=FALSE)
+Tourism <- read_csv("data/aspatial/tourism.csv", show_col_types=FALSE)
+
+```
+
+We have come to end of Section 2 with R packages installed and the Geospatial and Aspatial data imported, next section will cover data wrangling process of the imported data
+Verifying the project CRS of the above imported data
+
+# 3.0 GEOSPATIAL DATA WRANGLING
+
+This section covers all the steps taken in the pre-processing of the **mpsz_sf** and **MRT_LRT_Network_sf** data, which includes the following steps:
+
+* Verifying and transforming the Coordinate system
+* Handling missing values
+* Handling invalid geometries
+
+*Took reference from senior's project given as sample for this section*
+
+## 3.1 VERIFYING & TRANSFORMING CRS
+
+**MPSZ_SF**
+
+``` {r}
+st_crs(mpsz_sf) 
+```
+**MRT_LRT_NETWORK_SF**
+
+``` {r}
+st_crs(MRT_LRT_Network_sf) 
+```
+**SG_SF**
+
+``` {r}
+st_crs(sg_sf) 
+```
+
+It can be seen that while the projected CRS is SVY21, the current EPSG Code is 9001, hence the next step is to assign the correct 3414 EPSG code
+
+**MPSZ_SF**
+
+```{r}
+mpsz_sf <- st_set_crs(mpsz_sf, 3414)
+st_crs(mpsz_sf) 
+
+```
+
+**MRT_LRT_NETWORK_SF**
+
+``` {r}
+MRT_LRT_Network_sf <- st_set_crs(MRT_LRT_Network_sf, 3414)
+st_crs(MRT_LRT_Network_sf) 
+```
+**SG_SF**
+
+```{r}
+sg_sf <- st_set_crs(sg_sf, 3414)
+st_crs(sg_sf) 
+
+```
+
+The correct projected CRS with EPSG Code 3413 is assigned and now we can move on to the next step
+
+## 3.2 HANDLING MISSING VALUES
+
+Checking for missing values as they can impact future calculations and visualisations.
+
+**MPSZ_SF**
+
+```{r}
+mpsz_sf[rowSums(is.na(mpsz_sf))!=0,]
+```
+
+**MRT_LRT_NETWORK_SF**
+
+```{r}
+MRT_LRT_Network_sf[rowSums(is.na(MRT_LRT_Network_sf))!=0,]
+```
+
+**SG_SF**
+
+```{r}
+sg_sf[rowSums(is.na(sg_sf))!=0,]
+```
+
+There are no missing values in both **mpsz_sf** and **MRT_LRT_Network_sf** data
+
+## 3.3 HANDLING INVALID GEOMETRIES
+
+Checking for invalid geometries as they can impact future calculations and visualisations.
+
+**MPSZ_SF**
+
+```{r}
+length(which(st_is_valid(mpsz_sf) == FALSE))
+```
+
+**MRT_LRT_NETWORK_SF**
+
+```{r}
+length(which(st_is_valid(MRT_LRT_Network_sf) == FALSE))
+```
+
+**SG_SF**
+
+```{r}
+length(which(st_is_valid(sg_sf) == FALSE))
+```
+
+It can be seen that there are 9 invalid geometries in the **mpsz_sf** data and 1 invalid geometry in **sg_sf** data while there are no invalid geometries in **MRT_LRT_Network_sf** data, hence the invalid geometries need to be made valid
+
+**MPSZ_SF**
+
+```{r}
+mpsz_sf <- st_make_valid(mpsz_sf)
+length(which(st_is_valid(mpsz_sf) == FALSE))
+```
+
+**SG_SF**
+
+```{r}
+sg_sf <- st_make_valid(sg_sf)
+length(which(st_is_valid(sg_sf) == FALSE))
+```
+
+Invalid geometries have been handled, there are no more invalid geometries in both datasets.
+
+**VISUALISING GEOSPATIAL DATA**
+
+Before we jump into the analysis, it is a good practice to visualise the geospatial data
+
+**MPSZ**
+
+```{r}
+plot(st_geometry(mpsz_sf))
+```
+
+**SG_SF**
+
+```{r}
+plot(st_geometry(sg_sf))
+```
+
+**MRT_LRT_NETWORK**
+
+```{r}
+tmap_mode("view")
+tm_shape(mpsz_sf) +
+  tm_borders(alpha = 0.5) +
+  tmap_options(check.and.fix = TRUE) +
+  
+tm_shape(MRT_LRT_Network_sf) +
+  tm_dots(col = 'red', size = 0.02)
+```
+
+```{r}
+tmap_mode("plot")
+```
+
+With that, we have come to end of section 3 with the pre-processing of geospatial **mpsz_sf** and **MRT_LRT_Network_sf** data completed, next section will be looking into the same process for Aspatial data.
+
+# 4.0 ASPATIAL DATA WRANGLING
+
+This section covers all the steps taken in the pre-processing of the **Listings_2019**, **Listings_2021**, **Hotels** and **Tourism** data, which includes the following steps:
+
+* Handling missing values
+* Converting into sf objects and transforming the Coordinate system
+
+Let's have a glimpse at the data first
+
+```{r}
+glimpse(Listings_2019)
+```
+**Listings_2019** has latitude and longitude features
+
+```{r}
+glimpse(Listings_2021)
+```
+**Listings_2021** has latitude and longitude features
+
+```{r}
+glimpse(Hotels)
+```
+**Hotels** has Lat and Lng features
+
+```{r}
+glimpse(Tourism)
+```
+**Tourism** has both Lat and Lng and latitude and longitude features, this needs to be further explored to check if there are missing values
+
+## 4.1 HANDLING MISSING VALUES
+
+**LISTINGS_2019 DATA**
+
+```{r}
+sum(is.na(Listings_2019$longitude))
+```
+```{r}
+sum(is.na(Listings_2019$latitude))
+```
+No Missing values in the latitude and longitude columns in Listing_2019 data
+
+**LISTINGS_2021 DATA**
+
+```{r}
+sum(is.na(Listings_2021$longitude))
+```
+
+```{r}
+sum(is.na(Listings_2021$latitude))
+```
+No Missing values in the latitude and longitude columns in Listing_2021 data
+
+**HOTELS DATA**
+
+```{r}
+sum(is.na(Hotels$Lng))
+```
+
+```{r}
+sum(is.na(Hotels$Lat))
+```
+No Missing values in the Lng and Lat columns in Hotels data
+
+**TOURISM DATA**
+
+```{r}
+sum(is.na(Tourism$Lng))
+```
+```{r}
+sum(is.na(Tourism$Lat))
+```
+No Missing values in the Lng and Lat columns in Tourism data
+
+```{r}
+sum(is.na(Tourism$LATITUDE))
+```
+```{r}
+sum(is.na(Tourism$LONGTITUDE))
+```
+It can be seen that there is one missing values in the Longitude and Latitude columns in Tourism data, hence will be using the Lat and Lng for Tourism data.
+
+In order to identify the tourist attraction with the missing values
+
+```{r}
+Tourism[(is.na(Tourism$LONGTITUDE)),]
+Tourism[(is.na(Tourism$LATITUDE)),]
+```
+The tourist attraction with missing value happens to be cruise. As we are looking into Airbnb listings, I suppose it will not matter a lot whether they are close to cruise or not, hence going to remove cruise form the dataset.
+
+```{r}
+Tourism <- Tourism[!(is.na(Tourism$LONGTITUDE)), ]
+Tourism <- Tourism[!(is.na(Tourism$LATITUDE)), ]
+```
+
+```{r}
+glimpse(Tourism)
+```
+Therefore, the number rows decreased from 107 to 106 in the Tourism dataset
+
+## 4.2  CONVERTING INTO SF OBJECTS & TRANSFORMING CRS
+
+This converts the below dataframes into sf objects and transform the projected CRS to 3414
+
+```{r}
+Listings_2019_sf <- st_as_sf(Listings_2019, 
+                    coords = c("longitude",
+                               "latitude"),
+                    crs = 4326) %>%
+   st_transform(crs=3414)
+
+Listings_2021_sf <- st_as_sf(Listings_2021, 
+                    coords = c("longitude",
+                               "latitude"),
+                    crs = 4326) %>%
+   st_transform(crs=3414)
+
+Hotels_sf <- st_as_sf(Hotels, 
+                    coords = c("Lng",
+                               "Lat"),
+                    crs = 4326) %>%
+   st_transform(crs=3414)
+
+Tourism_sf <- st_as_sf(Tourism, 
+                    coords = c("Lng",
+                               "Lat"),
+                    crs = 4326) %>%
+   st_transform(crs=3414)
+```
+
+Checking if the correct CRS and EPSG code is assigned
+
+**LISTINGS_2019_SF**
+
+```{r}
+st_crs(Listings_2019_sf)
+```
+
+**LISTINGS_2021_SF**
+
+```{r}
+st_crs(Listings_2021_sf)
+```
+
+**HOTELS_SF**
+```{r}
+st_crs(Hotels_sf)
+```
+
+**TOURISM_SF**
+
+```{r}
+st_crs(Tourism_sf)
+```
+
+We have come to end of section 4 with the pre-processing of aspatial **Listings_2019**, **Listings_2021**, **Hotels** and **Tourism** data completed
+
+
+# 5.0 COMBINING GEOSPATIAL & ASPATIAL DATA
+
+This section covers the steps taken to convert both the geospatial and aspatial data into the appropriate formats for performing spatial point pattern analysis.
+
+Geospatial: **mpsz_sf**, **sg_sf**, and **MRT_LRT_Network_sf**
+
+Aspatial: **Listings_2019_sf**, **Listings_2021_sf**, **Hotels_sf** and **Tourism_sf**
+
+## 5.1 CONVERTING SF DATA FRAME TO SP'S SPATIAL* CLASS
+
+With the below code chunk, all of the above geospatial and aspatial data frames are converted into sp’s **Spatial* class**
+
+```{r}
+mpsz <- as_Spatial(mpsz_sf)
+MRT_LRT_Network <-as_Spatial(MRT_LRT_Network_sf)
+sg <- as_Spatial(sg_sf)
+Listings_2019 <- as_Spatial(Listings_2019_sf)
+Listings_2021 <- as_Spatial(Listings_2021_sf)
+Hotels <- as_Spatial(Hotels_sf)
+Tourism <- as_Spatial(Tourism_sf)
+```
+
+Checking if the conversion is successful
+
+**MPSZ**
+
+```{r}
+mpsz
+```
+
+**MRT_LRT_NETWORK**
+
+```{r}
+MRT_LRT_Network
+```
+
+**SG**
+
+```{r}
+sg
+```
+
+**LISTINGS_2019**
+
+```{r}
+Listings_2019
+```
+
+**LISTINGS_2021**
+
+```{r}
+Listings_2021
+```
+
+**HOTELS**
+
+```{r}
+Hotels
+```
+
+**TOURISM**
+
+```{r}
+Tourism
+```
+
+All of the above data have been converted into their respective sp's **Spatial * classes**
+
+## 5.2 CONVERTING THE SPATIAL* CLASS INTO GENERIC SP FORMAT
+
+This section covers the steps taken to convert **Spatial* classes** into **Spatial objects**
+
+```{r}
+mpsz_sp <- as(mpsz, "SpatialPolygons")
+sg_sp <- as(sg, "SpatialPolygons")
+MRT_LRT_Network_sp <-as(MRT_LRT_Network, "SpatialPoints")
+Listings_2019_sp <- as(Listings_2019, "SpatialPoints")
+Listings_2021_sp <- as(Listings_2021, "SpatialPoints")
+Hotels_sp <- as(Hotels, "SpatialPoints")
+Tourism_sp <- as(Tourism, "SpatialPoints")
+
+```
+
+Checking if the conversion is successful
+
+**MPSZ_SP**
+
+```{r}
+mpsz_sp
+```
+
+**SG_SP**
+
+```{r}
+sg_sp
+```
+
+**MRT_LRT_NETWORK_SP**
+
+```{r}
+MRT_LRT_Network_sp
+```
+
+**LISTINGS_2019_SP**
+
+```{r}
+Listings_2019_sp
+```
+
+**LISTINGS_2021_SP**
+
+```{r}
+Listings_2021_sp
+```
+
+**HOTELS_SP**
+
+```{r}
+Hotels_sp
+```
+
+**TOURISM_SP**
+
+```{r}
+Tourism_sp
+```
+All of the above data have been converted successfully
+
+## 5.3 CONVERTING THE GENERIC SP FORMAT INTO SPATSTAT'S PPP FORMAT
+
+This section covers the steps taken to convert **Spatial** data into spatista's **ppp** objects
+
+```{r}
+
+MRT_LRT_Network_ppp <-as(MRT_LRT_Network_sp, "ppp")
+Listings_2019_ppp <- as(Listings_2019_sp, "ppp")
+Listings_2021_ppp <- as(Listings_2021_sp, "ppp")
+Hotels_ppp <- as(Hotels_sp, "ppp")
+Tourism_ppp <- as(Tourism_sp, "ppp")
+
+```
+
+
+Checking the summary statistics of the newly created ppp objects
+
+**MRT_LRT_NETWORK_PPP**
+
+```{r}
+summary(MRT_LRT_Network_ppp)
+```
+
+**LISTINGS_2019_PPP**
+
+```{r}
+summary(Listings_2019_ppp)
+```
+
+**LISTINGS_2021_PPP**
+
+```{r}
+summary(Listings_2021_ppp)
+```
+
+
+**HOTELS_PPP**
+
+```{r}
+summary(Hotels_ppp)
+```
+
+**TOURISM_PPP**
+
+```{r}
+summary(Tourism_ppp)
+```
+The summary of the above data shows that the following ppp pbjects have duplicated values which willlbe handled in the next section.
+
+**LISTINGS_2019_PPP**, **LISTINGS_2021_PPP**, **HOTELS_PPP** and **TOURISM_PPP**
+
+
+## 5.3 REMOVING DUPLICATE POINTS USING JITTERING FUNCTION
+
+This section covers the steps taken to handle the duplicated values in the below ppp objects. The best solution to avoid deleting useful information is jittering, which will add a small perturbation to the duplicate points so that they do not occupy the exact same space
+
+```{r}
+Listings_2019_ppp_jit <- rjitter(Listings_2019_ppp, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+Listings_2021_ppp_jit <- rjitter(Listings_2021_ppp, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+Hotels_ppp_jit <- rjitter(Hotels_ppp, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+Tourism_ppp_jit <- rjitter(Tourism_ppp, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+
+```
+
+Checking if there are any duplicated values
+
+**LISTINGS_2019_PPP_JIT**
+
+```{r}
+any(duplicated(Listings_2019_ppp_jit))
+```
+
+**LISTINGS_2021_PPP_JIT**
+
+```{r}
+any(duplicated(Listings_2021_ppp_jit))
+```
+
+
+**HOTELS_PPP_JIT**
+
+```{r}
+any(duplicated(Hotels_ppp_jit))
+```
+
+**TOURISM_PPP_JIT**
+
+```{r}
+any(duplicated(Tourism_ppp_jit))
+```
+
+There are no duplicated values and hence we can move on to the next crucial step which is creating the **owin** object
+
+## 5.4 CREATING OWIN OBJECT
+
+When analysing spatial point patterns, it is a good practice to confine the analysis with a geographical area like Singapore boundary. In spatstat, an object called owin is specially designed to represent this polygonal region.
+
+```{r}
+sg_owin <- as(sg_sp, "owin")
+plot(sg_owin)
+```
+```{r}
+summary(sg_owin)
+```
+
+## 5.5 COMBINING POINT EVENTS OBJECT AND OWIN OBJECT
+
+This is the last step of this entire data wrangling process of combining geospatial and aspatial data, which is to extract the relevant events that are located within Singapore.
+
+```{r}
+MRT_LRT_network_ppp_sg = MRT_LRT_Network_ppp[sg_owin]
+Listings_2019_ppp_sg = Listings_2019_ppp_jit[sg_owin]
+Listings_2021_ppp_sg = Listings_2021_ppp_jit[sg_owin]
+Hotels_ppp_sg = Hotels_ppp_jit[sg_owin]
+Tourism_ppp_sg = Tourism_ppp_jit[sg_owin]
+```
+
+The output object above combined both the point and polygon feature in one ppp object class and it is good practice to visualise the combined data.
+
+```{r}
+plot(MRT_LRT_network_ppp_sg)
+```
+```{r}
+par(mfrow=c(1,2))
+plot(Listings_2019_ppp_sg)
+plot(Listings_2021_ppp_sg)
+```
+```{r}
+plot(Hotels_ppp_sg)
+```
+```{r}
+plot(Tourism_ppp_sg)
+```
+
+Now we are all set for the performing the actual analysis!
+
+# 6.0 [SECTION A] AIRBNB DISTRIBUTION ANALYSIS IN 2019
+
+This section A covers the following two sets of analysis to determine how the distribution of Airbnb listings in Singapore is affected by location factors of MRTs, tourist attractions and hotels
+
+* Exploratory Spatial Data Analysis
+* Second-order Spatial Point Patterns Analysis
+
+## 6.1 [SECTION A] EXPLORATORY SPATIAL DATA ANALYSIS: KERNEL DENSITY MAPS
+
+This section covers the steps taken to derive kernel density maps of Airbnb listings, hotels, MRT services, and tourist attractions.
+
+### 6.1.1 RESCALLING KDE VALUES
+
+The first step is to rescale and convert the unit of measurement from meter to kilometer, this step will ensure a better visualisation for comprehension
+
+```{r}
+MRT_LRT_network_ppp_sg_km <- rescale(MRT_LRT_network_ppp_sg, 1000, 'km')
+Listings_2019_ppp_sg_km <- rescale(Listings_2019_ppp_sg, 1000, 'km')
+Listings_2021_ppp_sg_km <- rescale(Listings_2021_ppp_sg, 1000, 'km')
+Hotels_ppp_sg_km <- rescale(Hotels_ppp_sg, 1000, 'km')
+Tourism_ppp_sg_km <- rescale(Tourism_ppp_sg, 1000, 'km')
+```
+
+### 6.1.2 COMPUTING KERNEL DENSITY ESTIMATION
+
+This section covers the steps taken to compute the Kernel Density estimation, there are many factors to consider and that will be detailed below with the reason
+
+* **BANDWIDTH METHODS**
+  + *bw.diggle()* is the automatic bandwidth selection method however there are also other recommended methods such as *bw.CvL(), bw.scott() or bw.ppl()*
+  + *bw.ppl()* is used when the pattern consists predominantly of tight clusters, while *bw.diggle()* is used to detect a single tight cluster in the midst of random noise
+  + Therefore, most factors (hotels, tourist attractions, listings) appear to be clustered in the central region as expected, so *bw.diggle()* will be a suitable for our use
+  
+* **KERNEL METHODS**
+  + Default smoothing kernel used is *gaussian* while Other smoothing methods include *epanechnikov, quartic and disc*, so will be using the default 
+  
+* **FIXED AND ADAPTIVE KDE BANDWIDTH**
+  + *Fixed bandwidth* method is very sensitive to highly skew distribution of spatial point patterns
+  + *Adaptive bandwidth* method is used to overcome the this problem of skewness in data
+  + Therefore, as most of our data appears to be clustered in the central region, will use fixed bandwidth method
+  
+```{r}
+kde_MRT_LRT_network_sg_bw <- density(MRT_LRT_network_ppp_sg_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_listings_2019_sg_bw <- density(Listings_2019_ppp_sg_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_hotels_sg_bw <- density(Hotels_ppp_sg_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_tourism_sg_bw <- density(Tourism_ppp_sg_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+```
+
+### 6.1.3 PLOTTING KERNEL DENSITY MAPS
+
+**AIRBNB LISTINGS IN JUNE 2019**
+
+```{r}
+plot(kde_listings_2019_sg_bw)
+```
+It can be seen that most of the listings are clustered in the central region closer to the financial and business district where we have majority of our main attractions. 
+
+**SINGAPORE MRT NETWORK**
+
+```{r}
+plot(kde_MRT_LRT_network_sg_bw)
+```
+It can be seen that the MRT stations are also mostly clustered around the central region where we have the business district, this is where we have many interchanges as well such as Dhoby Gaut, City Hall etc. There is another cluster in the north-east region which is probably because of the Punggol and Seng Kang LRT stations and the same explanation could also be applied to the cluster in the western part of Singapore where the bukit panjang LRT line is located.
+
+**HOTELS AROUND SNGAPORE**
+
+```{r}
+plot(kde_hotels_sg_bw)
+```
+As expected, the hotels are also clustered in the central region as per convenience of all travellers (business, tourist etc). This looks very similar to KDE map of Airbnb Listings, which makes me wonder if majority of the Airbnb listings are not only by local residents offering their houses but also smaller boutique hotels using Airbnb as a platform to reach out to the potential cutomers. 
+
+**SINGAPORE TOURIST ATTRACTIONS**
+
+```{r}
+plot(kde_tourism_sg_bw)
+```
+I guess it does make sense that most of our tourist attractions like heritage sites, shopping districts and other attractions are all clustered in the central region
+
+### 6.1.4 CONVERTING KDE OUTPUT INTO GRID OBJECT
+
+```{r}
+gridded_kde_MRT_LRT_network_sg_bw <- as.SpatialGridDataFrame.im(kde_MRT_LRT_network_sg_bw)
+gridded_kde_listings_2019_sg_bw <- as.SpatialGridDataFrame.im(kde_listings_2019_sg_bw)
+gridded_kde_hotels_sg_bw <- as.SpatialGridDataFrame.im(kde_hotels_sg_bw)
+gridded_kde_tourism_sg_bw <- as.SpatialGridDataFrame.im(kde_tourism_sg_bw)
+```
+
+Plotting the results:
+
+**AIRBNB LISTINGS IN 2019**
+```{r}
+spplot(gridded_kde_listings_2019_sg_bw)
+```
+
+**SINGAPORE MRT NETWORK**
+
+```{r}
+spplot(gridded_kde_MRT_LRT_network_sg_bw)
+```
+
+**HOTELS AROUND SNGAPORE**
+
+```{r}
+plot(gridded_kde_hotels_sg_bw)
+```
+
+**SINGAPORE TOURIST ATTRACTIONS**
+
+```{r}
+plot(gridded_kde_tourism_sg_bw)
+```
+
+### 6.1.5 CONVERTING GRIDDED OUTPUT INTO RASTER
+
+```{r}
+kde_MRT_LRT_network_sg_bw_raster <- raster(gridded_kde_MRT_LRT_network_sg_bw)
+projection(kde_MRT_LRT_network_sg_bw_raster) <- CRS("+init=EPSG:3414")
+
+kde_listings_2019_sg_bw_raster <- raster(gridded_kde_listings_2019_sg_bw)
+projection(kde_listings_2019_sg_bw_raster) <- CRS("+init=EPSG:3414")
+
+kde_hotels_sg_bw_raster <- raster(gridded_kde_hotels_sg_bw)
+projection(kde_hotels_sg_bw_raster) <- CRS("+init=EPSG:3414")
+
+kde_tourism_sg_bw <- raster(gridded_kde_tourism_sg_bw)
+projection(kde_tourism_sg_bw) <- CRS("+init=EPSG:3414")
+
+```
+### 6.1.5 DISPLAYING KERNEL DENSITY MAPS ON OPENSTREETMAP
+
+
+```{r}
+tmap_mode("view")
+
+tm_shape(kde_listings_2019_sg_bw_raster) + 
+  tm_raster("v", title = "Airbnb listings June 2019", alpha = 0.7, palette = "Reds") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE) +
+
+tm_shape(kde_MRT_LRT_network_sg_bw_raster) + 
+  tm_raster("v", title = "MRT Network", alpha = 0.7, palette = "Blues") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE) +
+  
+tm_shape(kde_hotels_sg_bw_raster) + 
+  tm_raster("v", title = "Hotels", alpha = 0.7, palette = "Greens") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE) +
+  
+tm_shape(kde_tourism_sg_bw) + 
+  tm_raster("v", title = "Tourist Attractions", alpha = 0.7, palette = "Purples") +
+  tm_layout(legend.position = c("right", "bottom"), frame = FALSE)
+```
+
+
+```{r}
+tmap_mode("plot")
+```
+**ADVANTAGES OF KERNEL DENSITY OVER POINT MAP**
+
+* Kernel Density maps are more effective in visualizing clusters as compared to point maps because intensity is calculated and displayed in Kernel density map.While, we can also see clusters in point maps, it is not very clear especially when htere are many clusters close to each other
+
+**OBSERVATIONS**
+
+It can be seen from the above Kernel Density maps that Airbnb listings, Tourist Attractions as well as Hotels seem to be clustered mostly around the central region, it might be more worth while to focus only on the central region 
+
+### 6.1.6 CREATING CENTRAL REGION OWIN OBJECT
+
+In the following code chunk, we will be creating the Central region Owin from the **mpsz_sf** data object
+
+```{r}
+Central_region_sf = mpsz_sf[mpsz_sf$REGION_N == "CENTRAL REGION",]
+Central_region <- as_Spatial(Central_region_sf)
+Central_region_SP = as(Central_region, "SpatialPolygons")
+Central_region_owin <- as(Central_region_SP, "owin")
+plot(Central_region_owin)
+```
+## 6.1.7 COMBINING POINT EVENTS OBJECT AND CENTRAL REGION OWIN OBJECT 
+
+```{r}
+MRT_LRT_network_ppp_CR = MRT_LRT_Network_ppp[Central_region_owin]
+Listings_2019_ppp_CR = Listings_2019_ppp_jit[Central_region_owin]
+Listings_2021_ppp_CR = Listings_2021_ppp_jit[Central_region_owin]
+Hotels_ppp_CR = Hotels_ppp_jit[Central_region_owin]
+Tourism_ppp_CR = Tourism_ppp_jit[Central_region_owin]
+```
+
+The output object above combined both the point and polygon feature in one ppp object class and it is good practice to visualise the combined data.
+
+
+```{r}
+plot(MRT_LRT_network_ppp_CR)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(Listings_2019_ppp_CR)
+plot(Listings_2021_ppp_CR)
+```
+
+
+```{r}
+plot(Hotels_ppp_CR)
+```
+
+```{r}
+plot(Tourism_ppp_CR)
+```
+
+## 6.1.8 RESCALLING KDE VALUES FOR CENTRAL REGION
+
+```{r}
+MRT_LRT_network_ppp_CR_km <- rescale(MRT_LRT_network_ppp_CR, 1000, 'km')
+Listings_2019_ppp_CR_km <- rescale(Listings_2019_ppp_CR, 1000, 'km')
+Listings_2021_ppp_CR_km <- rescale(Listings_2021_ppp_CR, 1000, 'km')
+Hotels_ppp_CR_km <- rescale(Hotels_ppp_CR, 1000, 'km')
+Tourism_ppp_CR_km <- rescale(Tourism_ppp_CR, 1000, 'km')
+```
+
+### 6.1.9 COMPUTING KERNEL DENSITY ESTIMATION FOR CENTRAL REGION
+
+```{r}
+kde_MRT_LRT_network_CR_bw <- density(MRT_LRT_network_ppp_CR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_listings_2019_CR_bw <- density(Listings_2019_ppp_CR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_hotels_CR_bw <- density(Hotels_ppp_CR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+kde_tourism_CR_bw <- density(Tourism_ppp_CR_km,
+                                   sigma=bw.diggle,
+                                   edge=TRUE,
+                                   kernel="gaussian")
+```
+
+
+PLOTTING KERNEL DENSITY MAPS FOR CENTRAL REGION:
+
+**AIRBNB LISTINGS IN JUNE 2019**
+
+```{r}
+plot(kde_listings_2019_CR_bw)
+```
+**SINGAPORE MRT NETWORK**
+
+```{r}
+plot(kde_MRT_LRT_network_CR_bw)
+```
+**HOTELS AROUND SNGAPORE**
+
+```{r}
+plot(kde_hotels_CR_bw)
+```
+**SINGAPORE TOURIST ATTRACTIONS**
+
+```{r}
+plot(kde_tourism_CR_bw)
+```
+Based on the above central region Kernel density maps, it can be seen that indeed Airbnb listings, MRT stations, hotels and tourist attractions are all mostly located within Central region of Singapore.
+
+## 6.2 [SECTION A] SECOND-ORDER SPATIAL POINT PATTERN ANALYSIS
+
+This section covers the steps taken to perform Second-order Spatial Point Patterns Analysis to determine if there is any impact of chosen factors such as Hotel distribution, MRT network and Tourist attraction on Airbnb listings. In the earlier section, we have identified that Airbnb Listings are mostly clustered in the central region and therefore the focus of this part of the analysis will also be on central region.
+
+For the purpose of this analysis, will be applying the Second-order Multi-type Point Patterns Analysis using Cross L-Function
+
+### 6.2.1 SECOND-ORDER SPATIAL POINT PATTERN ANALYSIS [Airbnb listings & Hotels]
+
+**CREATING NEW COMBINED PPP OBJECT**
+
+This new combined ppp object is created from Airbnblistings and Hotels ppp objects
+
+```{r}
+Combined_A_H_ppp <- superimpose(Airbnblistings2019 = Listings_2019_ppp_CR,
+                                Hotelsdist = Hotels_ppp_CR)
+```
+
+**MULTI-TYPE POINT PATTERNS ANALYSIS**
+
+```{r}
+Combined_A_H_Lcross <- Lcross(Combined_A_H_ppp, i="Airbnblistings2019", j="Hotelsdist", correction='border')
+plot(Combined_A_H_Lcross, . -r ~ r, 
+     xlab = "distance(m)", 
+     xlim=c(0, 500))
+
+```
+**PERFORMING CSR ON CROSS L-FUNCTION**
+
+The hypothesis and test are as follows:
+
+Ho = The distribution of Airbnb listings 2019 and Hotels in the central region are spatially independent.
+
+H1= The distribution of Airbnb listings 2019 and Hotels in the central region are NOT at spatially independent.
+
+The null hypothesis will be rejected if p-value is smaller than alpha value of 0.001 (i.e. at 99.9% confident interval).
+
+In order to perform the CSR test, the envelope() of spatstat package will be used
+
+```{r}
+Combined_A_H_Lcross.csr <- envelope(Combined_A_H_ppp, Lcross, i="Airbnblistings2019", j="Hotelsdist", correction='border', nsim=999)
+```
+
+```{r}
+plot(Combined_A_H_Lcross.csr, . -r ~ r, xlab="distance(m)", xlim=c(0,500))
+```
+**OBERVATIONS:**
+* The black line is above the red line and beyond the upper confidence envelop, hence the null hypothesis is rejected at 99.9% confidence interval.
+* The distribution of Airbnb listings 2019 and Hotels in the central region are not spatially independent.
+
+### 6.2.2 SECOND-ORDER SPATIAL POINT PATTERN ANALYSIS [Airbnb listings & Tourist Attractions]
+
+**CREATING NEW COMBINED PPP OBJECT**
+
+This new combined ppp object is created from Airbnblistings and Tourism ppp objects
+
+```{r}
+Combined_A_T_ppp <- superimpose(Airbnblistings2019 = Listings_2019_ppp_CR,
+                                TouristAttractions = Tourism_ppp_CR)
+```
+
+**MULTI-TYPE POINT PATTERNS ANALYSIS**
+
+```{r}
+Combined_A_T_Lcross <- Lcross(Combined_A_T_ppp, i="Airbnblistings2019", j="TouristAttractions", correction='border')
+plot(Combined_A_T_Lcross, . -r ~ r, 
+     xlab = "distance(m)", 
+     xlim=c(0, 500))
+
+```
+**PERFORMING CSR ON CROSS L-FUNCTION**
+
+The hypothesis and test are as follows:
+
+Ho = The distribution of Airbnb listings 2019 and Tourist Attractions in the central region are spatially independent.
+
+H1= The distribution of Airbnb listings 2019 and Tourist Attractions in the central region are NOT at spatially independent.
+
+The null hypothesis will be rejected if p-value is smaller than alpha value of 0.001 (i.e. at 99.9% confident interval).
+
+In order to perform the CSR test, the envelope() of spatstat package will be used
+
+```{r}
+Combined_A_T_Lcross.csr <- envelope(Combined_A_T_ppp, Lcross, i="Airbnblistings2019", j="TouristAttractions", correction='border', nsim=999)
+```
+
+```{r}
+plot(Combined_A_T_Lcross.csr, . -r ~ r, xlab="distance(m)", xlim=c(0,500))
+```
+**OBERVATIONS:**
+
+* The black line is above the red line and beyond the upper confidence envelop for distance less than approximately 150m, hence the null hypothesis is rejected at 99.9% confidence interval.The distribution of Airbnb listings 2019 and tourist attractions in the central region are not spatially independent for less than 150m
+
+* The black line is below the red line and beyond the lower confidence envelop for distance more than approximately 150m, hence the null hypothesis is rejected at 99.9% confidence interval.The distribution of Airbnb listings 2019 and tourist attractions in the central region are not spatially independent for more than 150m
+
+
+### 6.2.3 SECOND-ORDER SPATIAL POINT PATTERN ANALYSIS [Airbnb listings & MRT NETWORK]
+
+**CREATING NEW COMBINED PPP OBJECT**
+
+This new combined ppp object is created from Airbnblistings and Tourism ppp objects
+
+```{r}
+Combined_A_M_ppp <- superimpose(Airbnblistings2019 = Listings_2019_ppp_CR,
+                                MRTNetwork = MRT_LRT_network_ppp_CR)
+```
+
+**MULTI-TYPE POINT PATTERNS ANALYSIS**
+
+```{r}
+Combined_A_M_Lcross <- Lcross(Combined_A_M_ppp, i="Airbnblistings2019", j="MRTNetwork", correction='border')
+plot(Combined_A_M_Lcross, . -r ~ r, 
+     xlab = "distance(m)", 
+     xlim=c(0, 500))
+
+```
+
+**PERFORMING CSR ON CROSS L-FUNCTION**
+
+The hypothesis and test are as follows:
+
+Ho = The distribution of Airbnb listings 2019 and MRT Network in the central region are spatially independent.
+
+H1= The distribution of Airbnb listings 2019 and MRT Network in the central region are NOT at spatially independent.
+
+The null hypothesis will be rejected if p-value is smaller than alpha value of 0.001 (i.e. at 99.9% confident interval).
+
+In order to perform the CSR test, the envelope() of spatstat package will be used
+
+```{r}
+Combined_A_M_Lcross.csr <- envelope(Combined_A_M_ppp, Lcross, i="Airbnblistings2019", j="MRTNetwork", correction='border', nsim=999)
+```
+
+```{r}
+plot(Combined_A_M_Lcross.csr, . -r ~ r, xlab="distance(m)", xlim=c(0,500))
+```
+
+**OBERVATIONS:**
+
+* The black line is above the red line and within the upper confidence envelop for distance less than approximately 150m and greater than 420m, hence the null hypothesis cannot be rejected at 99.9% confidence interval.The distribution of Airbnb listings 2019 and MRT network in the central region are spatially independent for less than 150m
+
+* The black line is below the red line and within the lower confidence envelop for distance more than approximately 150m and less than approximately 420m, hence the null hypothesis cannot be rejected at 99.9% confidence interval.The distribution of Airbnb listings 2019 and MRT network in the central region are spatially independent for less than 150m
+
+
+# 7.0 [Section B] IMPACT OF COVID-19
+
+This section B covers the following two sets of analysis to determine What is the impact of COVID-19 on Airbnb business in Singapore (comparing Airbnb listings data on June 2019 and June 2021)
+
+* Exploratory Spatial Data Analysis
+* Second-order Spatial Point Patterns Analysis
+
+## 7.1 [SECTION B] EXPLORATORY SPATIAL DATA ANALYSIS: KERNEL DENSITY MAPS]
+
+This section covers the steps taken to derive kernel density maps of Airbnb listings by room type as of June 2019 and June 2021
+
+It is always best practice to visualize your data first to increase our understanding
+
+**AIRBNB LISTINGS JUNE 2019**
+
+```{r}
+tmap_mode("view")
+tm_shape(Listings_2019_sf) +
+   tm_dots(col = 'room_type', size = 0.02, title = "Room Type")
+```
+
+**AIRBNB LISTINGS JUNE 2021**
+
+```{r}
+tmap_mode("view")
+tm_shape(Listings_2021_sf) +
+   tm_dots(col = 'room_type', size = 0.02, title = "Room Type")
+```
+```{r}
+tmap_mode("plot")
+```
+
+From the above two plots, we can see that while there are three room types in the June 2019 data, there are four room types in June 2021 data, therefore in order to make a fair comparison, **Hotel** room type will be excluded from June 2021 data.
+
+
+
+## 7.2 [SECTION B] SECOND-ORDER SPATIAL POINT PATTERN ANALYSIS
