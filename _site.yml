@@ -9,6 +9,8 @@ navbar:
       menu:
       - text: "Take-home Exercise 1"
         href: https://niharika-is415.netlify.app/posts/take%20home%20exercise-1/
+      - text: "Take-home Exercise 2"
+        href: https://niharika-is415.netlify.app/posts/take%20home%20exercise-2/
       href: about.html
     - text: "In-Class Exercise"
       menu:
@@ -37,6 +39,10 @@ navbar:
         href: https://niharika-is415.netlify.app/posts/2021-09-25-hands-on-exercise-6/
       - text: "Hands-on Exercise 7"
         href: https://niharika-is415.netlify.app/posts/2021-09-26-hands-on-exercise-7/
+      - text: "Hands-on Exercise 8"
+        href: https://niharika-is415.netlify.app/posts/2021-10-11-hands-on-exercise-8/
+      - text: "Hands-on Exercise 9"
+        href: 
       href: index.html
     - text: "About"
       href: about.html
