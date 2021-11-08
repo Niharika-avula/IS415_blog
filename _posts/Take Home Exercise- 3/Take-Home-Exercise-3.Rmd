@@ -1,0 +1,763 @@
+---
+title: "Take-home Exercise 3: Geographical Weighted Regression (GWR) analysis of resale prices of public housing in Singapore"
+description: |
+  This exercise aims to to explain factors affecting the resale prices of public housing in Singapore by building hedonic pricing model using appropriate Geographical Weighted Regression (GWR) methods.
+author:
+  - name: Niharika Avula 
+    url: https://example.com/norajones
+date: "`r Sys.Date()`"
+output: 
+  distill::distill_article:
+        toc: TRUE
+        toc_depth: 3
+---
+
+```{r setup, include=FALSE, eval = TRUE, echo = TRUE, message = FALSE, error = FALSE, fig.retina = 3, , cache = TRUE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# 1.0 OVERVIEW
+
+## 1.1 ABOUT AIRBNB
+
+
+
+## 1.2 PROBLEM STATEMENT
+
+This exercise aims to investigate factors affecting the resale prices of four-room public housing in Singapore by building hedonic pricing models. The hedonic price models will be built using appropriate Geographical Weighted Regression (GWR) methods and by the end of this exercise, the following will be covered:
+
+* Exploratory Data Analysis 
+* Hedonic pricing model for public housing resale price - **Multiple Linear Regression Method**
+  + Check for multicolinearity, non-Linearity, normality Assumption, Spatial Autocorrelation
+* Hedonic pricing model for public housing resale price - **GWmodel**
+  + Both fixed and adaptive bandwidth will be used
+
+# 2.0 GETTING STARTED
+
+This section covers installing the applicable R packages as well as importing the necessary data for analysis
+
+## 2.1 SETTING UP THE ENVIRONMENT
+
+The following R packages will be used in this analysis:
+
+* **sf:** used for importing, managing and processing vector-based geospatial data in R
+* **tmap:** used for plotting choropleth maps
+* **tidyverse:** consists of a family of R packages used for performing data science tasks such as importing, wrangling and visualising data.
+* **olsrr:** R package for building OLS and performing diagnostics tests
+* **GWmodel:** R package for calibrating geographical weighted family of models
+* **corrplot:** R package for multivariate data visualisation and analysis
+* **rjson:** to convert a JSON object into an R object.
+* **onemapsgapi:** An R wrapper for the ‘OneMap.Sg’
+* **httr:** Useful tool for working with HTTP organised by HTTP verbs (GET(), POST(), etc)
+
+```{r}
+packages = c('olsrr', 'corrplot', 'ggpubr', 'sf', 'spdep', 'GWmodel', 'tmap', 'tidyverse', 'onemapsgapi', 'dplyr', 'httr', 'rjson')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+
+```
+
+## 2.2 IMPORTING DATA
+
+The table below shows all the data that will be imported for this analysis
+
+Data Type         | Name                                   | Source
+------------------|----------------------------------------|----------------------------
+Geospatial        |Master Plan 2014 Subzone Boundary (Web) | [link](https://data.gov.sg/dataset/master-plan-2014-subzone-boundary-web)
+Aspatial          |HDB Resale Prices                       | [link](https://data.gov.sg/dataset/resale-flat-prices)
+Geospatial        |Childcare                               | OnemapAPI
+Geospatial        |Hawker                                  | OnemapAPI
+Geospatial        |Supermarket                             | OnemapAPI
+Geospatial        |MRT & LRT Locations                     | [link](https://datamall.lta.gov.sg/content/datamall/en/search_datasets.html?searchText=train%20station)
+         
+
+
+**DATA TALKING POINTS:**
+
+* Focus of this analysis will be four-room flat transacted from 1st January 2019 to 30th September 2020
+* *Dependent variable* is the resale prices of four-room public housing transacted between 1st Jan 2019 to 30th Sept 2020
+* *Independent variable* is divided into either structural and locational and the following variables are considered:
+     + **Structural factors:** Area of the unit, Floor level, Remaining lease
+     + **Locational factors:** Proxomity to CBD, eldercare, foodcourt/hawker centres, MRT, park, good primary school, shopping mall, supermarket, number of kindergartens within 350m, childcare centres within 350m, bus stop within 350m and primary school within 1km
+
+### 2.2.1 IMPORTING GEOSPATIAL DATA
+
+**Master Plan 2014 Subzone Boundary**
+
+``` {r}
+mpsz <- st_read(dsn = "data/geospatial", 
+                   layer = "MP14_SUBZONE_WEB_PL")
+```
+**SUPERMARKET**
+
+Importing this data from OnemapAPI using the code chunk below
+
+```{r}
+supermarket <- st_read("data/geospatial/supermarkets-geojson.geojson")%>%
+  mutate(lat = st_coordinates(.)[,2], lng = st_coordinates(.)[,1])%>%
+  st_transform(crs = 3414)
+```
+
+```{r}
+glimpse(supermarket)
+```
+
+**HAWKER CENTRES**
+
+```{r}
+hawker <- st_read("data/geospatial/hawker-centres-geojson.geojson")%>%
+  mutate(lat = st_coordinates(.)[,2], lng = st_coordinates(.)[,1])%>% 
+  st_transform(crs = 3414)
+```
+
+```{r}
+glimpse(hawker)
+```
+
+**CHILDCARE**
+
+```{r}
+childcare <- st_read("data/geospatial/child-care-services-geojson.geojson")%>%
+  mutate(lat = st_coordinates(.)[,2], lng = st_coordinates(.)[,1])%>%
+  st_transform(crs = 3414)
+
+```
+
+```{r}
+glimpse(childcare)
+```
+
+**MRT & LRT**
+
+``` {r}
+MRT_LRT <- st_read(dsn = "data/geospatial", 
+                   layer = "MRTLRTStnPtt")
+```
+### 2.2.3 IMPORTING ASPATIAL DATA
+
+```{r}
+HDB_resale <- read_csv("data/aspatial/HDB resale-flat-prices.csv", show_col_types=FALSE)
+```
+We have come to end of Section 2 with R packages installed and the Geospatial and Aspatial data imported, next section will cover data wrangling process of the imported data 
+
+# 3.0 GEOSPATIAL DATA WRANGLING
+
+This section covers all the steps taken in the pre-processing of the **mpsz** data, which includes the following steps:
+
+* Verifying and transforming the Coordinate system
+* Handling missing values
+* Handling invalid geometries
+
+*Took reference from senior's project given as sample for this section*
+
+## 3.1 HANDLING MISSING VALUES
+
+Checking for missing values as they can impact future calculations and visualisations.
+
+**Master Plan 2014 Subzone Boundary**
+
+```{r}
+mpsz[rowSums(is.na(mpsz))!=0,]
+```
+
+There are no missing values in both **mpsz** data
+
+**SUPERMARKET**
+
+```{r}
+supermarket[rowSums(is.na(supermarket))!=0,]
+```
+There are no missing values in both **supermarket** data
+
+**HAWKER CENTRES** 
+
+```{r}
+hawker[rowSums(is.na(hawker))!=0,]
+```
+There are no missing values in both **hawker** data
+
+**CHILDCARE** 
+
+```{r}
+childcare[rowSums(is.na(childcare))!=0,]
+```
+There are no missing values in both **childcare** data
+
+**MRT & LRT** 
+
+```{r}
+MRT_LRT[rowSums(is.na(MRT_LRT))!=0,]
+```
+There are no missing values in both **MRT_LRT** data
+
+## 3.2 HANDLING INVALID GEOMETRIES
+
+Checking for invalid geometries as they can impact future calculations and visualisations.
+
+**Master Plan 2014 Subzone Boundary** 
+
+```{r}
+length(which(st_is_valid(mpsz) == FALSE))
+```
+
+It can be seen that there are 9 invalid geometries in the **mpsz** data, hence the invalid geometries need to be made valid
+
+```{r}
+mpsz <- st_make_valid(mpsz)
+length(which(st_is_valid(mpsz) == FALSE))
+```
+
+Invalid geometries have been handled, there are no more invalid geometries in above dataset.
+
+**SUPERMARKET** 
+
+```{r}
+length(which(st_is_valid(supermarket) == FALSE))
+```
+
+It can be seen that there are no invalid geometries in the **supermarket** data
+
+**HAWKER CENTRES**
+
+```{r}
+length(which(st_is_valid(hawker) == FALSE))
+```
+
+It can be seen that there are no invalid geometries in the **hawker** data
+
+**CHILDCARE** 
+
+```{r}
+length(which(st_is_valid(childcare) == FALSE))
+```
+It can be seen that there are no invalid geometries in the **childcare** data
+
+**MRT & LRT**
+```{r}
+length(which(st_is_valid(MRT_LRT) == FALSE))
+```
+It can be seen that there are no invalid geometries in the **MRT_LRT** data
+
+
+## 3.3 VERIFYING & TRANSFORMING CRS
+
+**Master Plan 2014 Subzone Boundary**
+
+``` {r}
+st_crs(mpsz) 
+```
+
+It can be seen that while the projected CRS is SVY21, the current EPSG Code is 9001, hence the next step is to assign the correct 3414 EPSG code
+
+```{r}
+mpsz <- st_set_crs(mpsz, 3414)
+st_crs(mpsz) 
+```
+**SUPERMARKET**
+
+``` {r}
+st_crs(supermarket)
+```
+The correct projected CRS with EPSG Code 3413 is assigned 
+
+**HAWKER CENTRES**
+
+``` {r}
+st_crs(hawker)
+```
+The correct projected CRS with EPSG Code 3413 is assigned 
+
+**CHILDCARE**
+
+``` {r}
+st_crs(childcare)
+```
+The correct projected CRS with EPSG Code 3413 is assigned 
+
+**MRT & LRT**
+
+``` {r}
+st_crs(MRT_LRT)
+```
+It can be seen that while the projected CRS is SVY21, the current EPSG Code is 9001, hence the next step is to assign the correct 3414 EPSG code
+
+```{r}
+MRT_LRT <- st_set_crs(MRT_LRT, 3414)
+st_crs(MRT_LRT) 
+```
+The correct projected CRS with EPSG Code 3413 is assigned 
+
+
+**VISUALISING GEOSPATIAL DATA**
+
+Before we jump into the analysis, it is a good practice to visualise the geospatial data
+
+```{r}
+tmap_mode("view")
+tm_shape(mpsz) +
+  tm_borders(alpha = 0.5) +
+  tmap_options(check.and.fix = TRUE) +
+
+tm_shape(MRT_LRT) +
+  tm_dots(col = 'red', size = 0.02) +
+  
+tm_shape(supermarket) +
+  tm_dots(col = 'black', size = 0.02) +
+  
+tm_shape(childcare) +
+  tm_dots(col = 'green', size = 0.02) +
+  
+tm_shape(hawker) +
+  tm_dots(col = 'blue', size = 0.02) 
+  
+```
+
+```{r}
+tmap_mode("plot")
+```
+
+# 4.0 ASPATIAL DATA WRANGLING
+
+This section covers all the steps taken to extract the data based on focus area, convert the street name and block number to derive the postal code followed by the pre-processing of the **HDB_resale** data, which includes the following steps:
+
+* Extracting the Data subset
+* Pre-processing Geometry data from OnemapAPI
+  + Handling missing values
+  + Converting into sf objects and transforming the Coordinate system
+* Pre-processing Locational Factors
+  + Deriving Proximity measures
+  + Deriving Frequency count
+* Pre-processing Structural Factors
+
+Let's have a glimpse at the data first
+
+```{r}
+glimpse(HDB_resale)
+```
+It can be seen that there is no geometry data and the address is given as street name and block number instead, therefore onemapAPI will be used to derive the postal code and geometry data, but before that let's extract the data of four-room houses within the specific period.
+
+
+## 4.1 Extracting sub dataset in HDB_resale
+
+As we are only interested in four-room houses transacted from 1st January 2019 to 30th September 2020, we have to extract this from the **HDB_resale** data which contains infromation since 2017 and for all flat types
+
+```{r}
+HDB_resale_four_room <- filter(HDB_resale, flat_type == '4 ROOM')
+glimpse(HDB_resale_four_room)
+```
+
+It can be seen that the flat-type is filtered to contain only *4 Room* flats, next step is to further filter based on the transaction period but the data type of month column is in character.
+
+```{r}
+dates_to_include <- c('2019-01', '2019-02', '2019-03', '2019-04', '2019-05', '2019-06', '2019-07', '2019-08', '2019-09', '2019-10', '2019-11', '2019-12', '2020-01', '2020-02', '2020-03', '2020-04', '2020-05', '2020-06', '2020-07', '2020-08', '2020-09')
+HDB_resale_filtered <- filter(HDB_resale_four_room, month %in% dates_to_include)
+glimpse(HDB_resale_filtered)
+```
+
+With this, the subset data we are interested in is extracted for further analysis and has 15901 rows
+
+## 4.2 Pre-Processing HDB_resale
+
+### 4.2.1 Extracting LAT & LNG from OnemapAPI
+
+As a first step, a new column will be created with the block and street name combined and this columns will be used to search for the geometry data from onemapAPI
+
+```{r}
+library(stringr)
+HDB_resale_filtered$block_street <- str_c(HDB_resale_filtered$block, ' ', HDB_resale_filtered$street_name)
+HDB_resale_filtered$block_street <- gsub(" ", "+", HDB_resale_filtered$block_street, fixed = TRUE)
+glimpse(HDB_resale_filtered)
+```
+
+The following function is written to extract the geometry data (Source: [Link](https://datascienceplus.com/accessing-web-data-json-in-r-using-httr/))
+
+```{r}
+library(onemapsgapi)
+library(httr)
+getcoordinates <- function(address){
+  query_string <-str_c('https://developers.onemap.sg/commonapi/search?searchVal=', toString(address), '&returnGeom=Y&getAddrDetails=Y&pageNum=1')
+  jsonresp <- GET(query_string)
+  resp <- content(jsonresp, as="parsed")
+  if (length(resp$results) != 0){
+    
+    resp_df <- resp$results
+    resp_df_final <- resp_df%>%bind_rows%>%select(BLK_NO, ROAD_NAME, POSTAL, X, Y, LATITUDE, LONGTITUDE)
+    #print(resp_df_final)
+  }
+  else{
+    resp_df_final <- 0
+  }
+  
+  return(resp_df_final)
+}
+```
+
+
+Using for loop, all 15901 addresses are passed to extract the geometry data
+
+```{r}
+HDB_resale_filtered$Lat <- 0
+HDB_resale_filtered$Lng <- 0
+
+for (x in HDB_resale_filtered$block_street) {
+  index <- match(x, HDB_resale_filtered$block_street)
+  F_results <- as.list(getcoordinates(x))
+  if(length(F_results$LATITUDE)!=0){
+    HDB_resale_filtered$Lat[index] <- F_results$LATITUDE
+  }
+  else
+  {
+    HDB_resale_filtered$Lat[index] <- NA
+  }
+  
+  if(length(F_results$LONGTITUDE)!=0){
+    HDB_resale_filtered$Lng[index] <- F_results$LONGTITUDE
+  }
+  else
+  {
+    HDB_resale_filtered$Lng[index] <- NA
+  }
+  
+  }
+```
+
+Displaying the dataset
+
+```{r}
+head(HDB_resale_filtered)
+```
+Lat and Lng values are appended correctly and now we can move on to the next step of wrangling process to convert the CRS and handle any missing values
+
+### 4.2.2 Handling Missing Values
+
+```{r}
+sum(is.na(HDB_resale_filtered$Lng))
+```
+
+```{r}
+sum(is.na(HDB_resale_filtered$Lat))
+```
+Therefore, there are 13 missing values which could be not obtained due to API error, so we can proceed to remove them.
+
+```{r}
+HDB_resale_filtered <- HDB_resale_filtered[!(is.na(HDB_resale_filtered$Lng)), ]
+HDB_resale_filtered <- HDB_resale_filtered[!(is.na(HDB_resale_filtered$Lat)), ]
+```
+
+
+### 4.2.2  Converting into sf objects and transforming the Coordinate system
+
+```{r}
+HDB_resale_filtered_sf <- st_as_sf(HDB_resale_filtered, 
+                      coords = c("Lng", 
+                                 "Lat"), 
+                      crs=4326) %>%
+  st_transform(crs = 3414)
+
+st_crs(HDB_resale_filtered_sf)
+```
+
+Done, it is correctly assigned now.
+
+## 4.3 Processing Locational Factors
+
+The locational factors used in this analysis are as below which will be calculated in this section:
+
+* Proximity to MRT & LRT
+* Proximity to Supermarket
+* No. of supermarkets within 1km
+* Proximity to Hawker centers
+* No. of hawker centers within 1km
+* Proximity to Childcare
+* No. of Childcare centers within 1km
+
+**Deriving Proximity AND frequency count of locational factors**
+
+**FOR PROXIMITY MEASURE:**
+Instead of using the Onemapsgapi wrapper as suggested due to its limitations such as high time consumption and loss of data due to API error, another function called the st_distance() from sf will be used, the source of this code chunk is from the link shown here. (Source: [LINK](https://campus.datacamp.com/courses/spatial-analysis-with-sf-and-raster-in-r/conducting-spatial-analysis-with-the-sf-and-raster-packages?ex=11))
+
+**FOR FREQUENCY COUNT:**
+For the purpose of this, I will considering the frequency count of the supermarkets etc WITHIN 1km radius which seems more realistic
+
+
+The code chunk below is written to calculate the distance and frequency for each of the different locational factors
+
+**SUPERMARKET**
+
+```{r}
+library(units)
+library(matrixStats)
+radius <- 1000
+HDB_resale_filtered_sf$Prox_supermarket <- 0
+HDB_resale_filtered_sf$Freq_supermarket <- 0
+dist1 <- st_distance(HDB_resale_filtered_sf, supermarket) 
+dist1 <- drop_units(dist1)
+HDB_resale_filtered_sf$Prox_supermarket <-round(rowMins(dist1))
+dist1_df <- as.data.frame(dist1)
+HDB_resale_filtered_sf$Freq_supermarket <- rowSums(dist1_df <= radius)
+```
+
+**HAWKER CENTRES**
+
+```{r}
+radius <- 1000
+HDB_resale_filtered_sf$Prox_hawker <- 0
+HDB_resale_filtered_sf$Freq_hawker <- 0
+dist2 <- st_distance(HDB_resale_filtered_sf, hawker)
+dist2 <- drop_units(dist2)
+HDB_resale_filtered_sf$Prox_hawker <- round(rowMins(dist2))
+dist2_df <- as.data.frame(dist2)
+HDB_resale_filtered_sf$Freq_hawker <- rowSums(dist2_df <= radius)
+```
+
+**CHILDCARE** 
+
+```{r}
+radius <- 1000
+HDB_resale_filtered_sf$Prox_childcare <- 0
+HDB_resale_filtered_sf$Freq_childcare <- 0
+dist3 <- st_distance(HDB_resale_filtered_sf, childcare)
+dist3 <- drop_units(dist3)
+HDB_resale_filtered_sf$Prox_childcare <- round(rowMins(dist3))
+dist3_df <- as.data.frame(dist3)
+HDB_resale_filtered_sf$Freq_childcare <- rowSums(dist3_df <= radius)
+```
+
+**MRT & LRT** 
+
+*Frequency of MRT and LRT stations is not applicable*
+
+```{r}
+HDB_resale_filtered_sf$Prox_MRT_LRT <- 0
+dist4 <- st_distance(HDB_resale_filtered_sf, MRT_LRT)
+dist4 <- drop_units(dist4)
+HDB_resale_filtered_sf$Prox_MRT_LRT <- round(rowMins(dist4))
+```
+
+
+```{r}
+glimpse(HDB_resale_filtered_sf)
+```
+With this, we have all the proximity leasures of the locational factors
+
+## 4.3 Processing Structural Factors
+
+Structural factors being considered are as follows:
+* Area of Unit
+* Remaining Lease
+
+```{r}
+str(HDB_resale_filtered_sf)
+```
+
+It can be seen that remaining_lease is in character type and needs to be converted
+
+```{r}
+HDB_resale_filtered_sf$remaining_lease <- as.numeric(gsub(".*?([0-9]+).*", "\\1", HDB_resale_filtered_sf$remaining_lease)) 
+str(HDB_resale_filtered_sf)
+```
+With that, we can conclude the data wrangling process and proceed to the next section
+
+# 5.0 Exploratory Data Analysis
+
+## 5.1 Histogram Plots - Distribution of variables
+
+The distribution of the independent variables is shown using histogram
+
+```{r}
+AREA_SQM <- ggplot(data=HDB_resale_filtered_sf, aes(x= `floor_area_sqm`)) +
+  geom_histogram(bins=20, color="black", fill="light blue")
+
+Remaining_Lease <- ggplot(data=HDB_resale_filtered_sf, aes(x= `remaining_lease`)) +
+  geom_histogram(bins=20, color="black", fill="light blue")
+
+Prox_supermarket1 <- ggplot(data=HDB_resale_filtered_sf, aes(x= `Prox_supermarket`)) +
+  geom_histogram(bins=20, color="black", fill="light blue") +
+  xlim(0, 3000)
+
+Prox_hawker1 <- ggplot(data=HDB_resale_filtered_sf, aes(x= `Prox_hawker`)) +
+  geom_histogram(bins=20, color="black", fill="light blue")+
+  xlim(0, 3000)
+
+Prox_childcare1 <- ggplot(data=HDB_resale_filtered_sf, aes(x= `Prox_childcare`)) +
+  geom_histogram(bins=20, color="black", fill="light blue")+
+  xlim(0, 1000)
+  
+Prox_MRT_LRT1 <- ggplot(data=HDB_resale_filtered_sf, aes(x= `Prox_MRT_LRT`)) +
+  geom_histogram(bins=20, color="black", fill="light blue")+
+  xlim(0, 3000)
+
+Freq_supermarket <- ggplot(data=HDB_resale_filtered_sf, aes(x= `Freq_supermarket`)) +
+  geom_histogram(bins=20, color="black", fill="light blue")
+
+Freq_hawker <- ggplot(data=HDB_resale_filtered_sf, aes(x= `Freq_hawker`)) +
+  geom_histogram(bins=20, color="black", fill="light blue")
+
+Freq_childcare <- ggplot(data=HDB_resale_filtered_sf, aes(x= `Freq_childcare`)) +
+  geom_histogram(bins=20, color="black", fill="light blue")
+
+ggarrange(AREA_SQM, Remaining_Lease, Prox_supermarket1, Prox_hawker1, Prox_childcare1, Prox_MRT_LRT1, Freq_supermarket, Freq_hawker, Freq_childcare)
+```
+
+## 5.2 Statistical Point Map
+
+Now, we will be plotting the geospatial distribution HDB resale prices in Singapore
+```{r}
+tmap_mode("view")
+tm_shape(mpsz)+
+  tm_polygons() +
+tm_shape(HDB_resale_filtered_sf) +  
+  tm_dots(col = "resale_price",
+          alpha = 0.6,
+          style="quantile")
+  
+```
+
+```{r}
+tmap_mode("plot")
+```
+
+# 6.0 Hedonic Pricing Modelling
+
+In this section, the following two models will be covered:
+* Multiple Linear Regression Method
+* GWmodel
+
+## 6.1 Multiple Linear Regression Method
+
+### 6.1.1 Removing Unused columns
+
+The code chunk below is used to remove unused columns
+```{r}
+HDB_resale_final <- subset(HDB_resale_filtered_sf, select = -c(block_street, lease_commence_date, flat_model))
+str(HDB_resale_final)
+```
+
+### 6.1.2 Building Multiple linear regression method
+
+```{r}
+HDB.mlr <- lm(formula = resale_price ~ floor_area_sqm+remaining_lease+Prox_supermarket+Prox_hawker+Prox_childcare+Prox_MRT_LRT+Freq_supermarket+Freq_hawker+Freq_childcare,data=HDB_resale_final)
+summary(HDB.mlr)
+
+```
+With reference to the report above, it is clear that not all the independent variables are statistically significant at 1%. I will investigate further by removing those variables which are not statistically significant at 1%.
+
+Therefore removing *Prox_hawker* and *Freq_supermarket* from the model
+
+```{r}
+HDB.mlr1 <- lm(formula = resale_price ~ floor_area_sqm+remaining_lease+Prox_supermarket+Prox_childcare+Prox_MRT_LRT+Freq_hawker+Freq_childcare,data=HDB_resale_final)
+summary(HDB.mlr1)
+
+```
+However, there is no significant change in the adjust R squared value and hence I will be using all of the variables.
+
+```{r}
+HDB.mlr <- lm(formula = resale_price ~ floor_area_sqm+remaining_lease+Prox_supermarket+Prox_hawker+Prox_childcare+Prox_MRT_LRT+Freq_supermarket+Freq_hawker+Freq_childcare,data=HDB_resale_final)
+ols_regress(HDB.mlr)
+```
+
+### 6.1.3 Checking for multicolinearity
+
+It is important to ensure that the independent variables used are not highly correlated to each other as the quality of the model will be compromised, therefore the correlation matrix is plotted below.
+
+```{r}
+ols_vif_tol(HDB.mlr)
+```
+Since the VIF of the independent variables are more than 10 for the four proximity measures. there seems to be multicollinearity among those independent variables.
+
+### 6.1.4 Test for Non-Linearity
+
+```{r}
+ols_plot_resid_fit(HDB.mlr)
+```
+The figure above reveals that most some of the data points are scattered far above the 0 line, hence there could be relationships between the dependent variable and independent variables which are not linear.
+
+### 6.1.4 Test for Normality Assumption
+
+```{r}
+ols_plot_resid_hist(HDB.mlr)
+```
+
+The figure reveals that the residual of the multiple linear regression model is skewed to the right.
+
+### 6.1.4 Test for Spatial Autocorrelation
+
+First, export the residual of the hedonic pricing model and save it as a data frame.
+
+```{r}
+mlr.output <- as.data.frame(HDB.mlr$residuals)
+```
+
+Next, we will join the newly created data frame with HDB_resale_filtered_sf object.
+
+```{r}
+HDB_resale.res.sf <- cbind(HDB_resale_final, 
+                        HDB.mlr$residuals) %>%
+rename(`MLR_RES` = `HDB.mlr.residuals`)
+```
+
+Next, convert the simple feature object into a SpatialPointsDataFrame
+
+```{r}
+HDB_resale.sp <- as_Spatial(HDB_resale.res.sf)
+HDB_resale.sp
+```
+Next, use tmap package to display the distribution of the residuals on an interactive map.
+
+```{r}
+tmap_mode("view")
+tm_shape(mpsz)+
+  tm_polygons(alpha = 0.4) +
+tm_shape(HDB_resale.res.sf) +  
+  tm_dots(col = "MLR_RES",
+          alpha = 0.6,
+          style="quantile") 
+```
+
+```{r}
+tmap_mode("plot")
+
+```
+**Moran’s I test** 
+
+```{r}
+nb <- dnearneigh(coordinates(HDB_resale.sp), 0, 1500, longlat = FALSE)
+summary(nb)
+```
+
+```{r}
+#nb_lw <- nb2listw(nb, style = 'W', zero.policy = TRUE)
+#summary(nb_lw)
+```
+
+```{r}
+#lm.morantest(HDB.mlr, nb_lw)
+```
+The Global Moran’s I test for residual spatial autocorrelation shows that it’s p-value is less than 2.2e-16 which is less than the alpha value of 0.05. Hence, the null hypothesis can be rejected that the residuals are randomly distributed.
+
+Since the Observed Global Moran I = 0.143 which is greater than 0, it can be inferred that the residuals resemble cluster distribution.
+
+
+
+# 7.0 GWmodel
+
+## 7.1 Building Fixed Bandwidth GWR Model
+
+### 7.1.1 Computing fixed bandwith
+
+The code chunk below to calibrate the gwr model using fixed bandwidth and gaussian kernel.
+
+```{r}
+bw.fixed <- bw.gwr(formula = resale_price ~ floor_area_sqm+remaining_lease+Prox_supermarket+Prox_hawker+Prox_childcare+Prox_MRT_LRT+Freq_supermarket+Freq_hawker+Freq_childcare,data=HDB_resale.sp, approach="CV", kernel="gaussian", adaptive=FALSE, longlat=FALSE)
+```
+
+### 7.1.2 Calibrating GWR model 
+
+```{r}
+gwr.fixed <- gwr.basic(formula = resale_price ~ floor_area_sqm+remaining_lease+Prox_supermarket+Prox_hawker+Prox_childcare+Prox_MRT_LRT+Freq_supermarket+Freq_hawker+Freq_childcare,data=HDB_resale.sp, bw=bw.fixed, kernel = 'gaussian', longlat = FALSE)
+gwr.fixed
+```
